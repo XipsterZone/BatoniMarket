@@ -72,12 +72,39 @@
 
   main { padding: 14px 16px; }
 
-  .category-section { margin-bottom: 24px; }
-  .category-section h2 {
-    font-size: 16px;
-    font-weight: 700;
-    margin: 0 0 10px;
+  .search-wrap {
+    position: relative;
+    margin-bottom: 10px;
   }
+  .search-wrap input {
+    width: 100%;
+    padding: 10px 34px 10px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--secondary-bg);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+  }
+  .search-wrap input:focus {
+    outline: 2px solid var(--button);
+    outline-offset: -1px;
+  }
+  .search-clear {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--hint);
+    font-size: 16px;
+    line-height: 1;
+    padding: 6px;
+    cursor: pointer;
+    display: none;
+  }
+  .search-clear.visible { display: block; }
 
   .grid {
     display: grid;
@@ -335,6 +362,10 @@
 
 <header class="app-header">
   <h1 id="storeName">Каталог товаров</h1>
+  <div class="search-wrap">
+    <input type="text" id="searchInput" placeholder="Поиск по названию…" autocomplete="off">
+    <button class="search-clear" id="searchClear" type="button">✕</button>
+  </div>
   <div class="categories" id="categories"></div>
 </header>
 
@@ -401,8 +432,8 @@
   // ======= НАСТРОЙКИ =======
   // Вставьте сюда URL вашего Google Apps Script Web App (после деплоя).
   // Пример: "https://script.google.com/macros/s/AKfycb.../exec"
-  var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxsNT6RJ4XhVFekiw0VNzH-xm1A_c-FSIte4VK90eICFMaAY1fa_jSQK6nAUexSo3OSIQ/exec";
-  var STORE_NAME = "Батони Маркет";
+  var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqvbxtpWcq3pvgT4ym6RzRJ3GGaqQ_DJ4m4OL--2IsLzhULOVwfarrw9_ZApmz3nsIwg/exec";
+  var STORE_NAME = "Каталог товаров";
   // ==========================
 
   document.getElementById("storeName").textContent = STORE_NAME;
@@ -444,12 +475,15 @@
     categories: [],   // [{category, items:[{id,name,description,imageUrl}]}]
     cart: {},         // id -> {name, qty}
     activeCategory: null,
+    searchQuery: "",
     demoMode: false
   };
 
   var els = {
     categories: document.getElementById("categories"),
     catalog: document.getElementById("catalog"),
+    searchInput: document.getElementById("searchInput"),
+    searchClear: document.getElementById("searchClear"),
     cartBar: document.getElementById("cartBar"),
     cartBarText: document.getElementById("cartBarText"),
     orderScreen: document.getElementById("orderScreen"),
@@ -539,40 +573,33 @@
   }
 
   function renderCategoryPills() {
+    var searching = state.searchQuery.trim().length > 0;
     els.categories.innerHTML = state.categories.map(function (c) {
-      var active = c.category === state.activeCategory ? " active" : "";
+      var active = (!searching && c.category === state.activeCategory) ? " active" : "";
       return '<button class="cat-pill' + active + '" data-cat="' + escapeHtml(c.category) + '">' + escapeHtml(c.category) + '</button>';
     }).join("");
 
     els.categories.querySelectorAll(".cat-pill").forEach(function (btn) {
       btn.addEventListener("click", function () {
         state.activeCategory = btn.getAttribute("data-cat");
+        state.searchQuery = "";
+        els.searchInput.value = "";
+        els.searchClear.classList.remove("visible");
         renderCategoryPills();
-        var target = document.getElementById("section-" + cssEscape(state.activeCategory));
-        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        renderCatalog();
       });
     });
   }
 
-  function cssEscape(str) {
-    return String(str).replace(/[^a-zA-Z0-9а-яА-Я_-]/g, "_");
+  function getAllItems() {
+    var all = [];
+    state.categories.forEach(function (c) {
+      c.items.forEach(function (it) { all.push(it); });
+    });
+    return all;
   }
 
-  function renderCatalog() {
-    if (!state.categories.length) {
-      els.catalog.innerHTML = '<div class="empty-state">Каталог пока пуст</div>';
-      return;
-    }
-
-    els.catalog.innerHTML = state.categories.map(function (c) {
-      return (
-        '<section class="category-section" id="section-' + cssEscape(c.category) + '">' +
-          '<h2>' + escapeHtml(c.category) + '</h2>' +
-          '<div class="grid">' + c.items.map(cardTemplate).join("") + '</div>' +
-        '</section>'
-      );
-    }).join("");
-
+  function bindCardActions() {
     els.catalog.querySelectorAll("[data-action]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-id");
@@ -581,6 +608,35 @@
         setQty(id, action === "inc" ? current + 1 : current - 1);
       });
     });
+  }
+
+  function renderCatalog() {
+    if (!state.categories.length) {
+      els.catalog.innerHTML = '<div class="empty-state">Каталог пока пуст</div>';
+      return;
+    }
+
+    var query = state.searchQuery.trim().toLowerCase();
+
+    if (query) {
+      var matches = getAllItems().filter(function (it) {
+        return it.name.toLowerCase().indexOf(query) !== -1;
+      });
+      els.catalog.innerHTML = matches.length
+        ? '<div class="grid">' + matches.map(cardTemplate).join("") + '</div>'
+        : '<div class="empty-state">Ничего не найдено по запросу «' + escapeHtml(state.searchQuery.trim()) + '»</div>';
+      bindCardActions();
+      return;
+    }
+
+    var current = state.categories.filter(function (c) { return c.category === state.activeCategory; })[0];
+    if (!current || !current.items.length) {
+      els.catalog.innerHTML = '<div class="empty-state">В этой категории пока нет товаров</div>';
+      return;
+    }
+
+    els.catalog.innerHTML = '<div class="grid">' + current.items.map(cardTemplate).join("") + '</div>';
+    bindCardActions();
   }
 
   function loadProducts() {
@@ -610,6 +666,22 @@
         renderCatalog();
       });
   }
+
+  els.searchInput.addEventListener("input", function () {
+    state.searchQuery = els.searchInput.value;
+    els.searchClear.classList.toggle("visible", state.searchQuery.length > 0);
+    renderCategoryPills();
+    renderCatalog();
+  });
+
+  els.searchClear.addEventListener("click", function () {
+    state.searchQuery = "";
+    els.searchInput.value = "";
+    els.searchClear.classList.remove("visible");
+    renderCategoryPills();
+    renderCatalog();
+    els.searchInput.focus();
+  });
 
   // ---- Order screen ----
 
