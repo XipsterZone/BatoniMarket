@@ -6,17 +6,24 @@
 <title>Каталог товаров</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
+  /*
+   * Фирменная палитра (Batoni), зафиксирована сознательно — НЕ привязана
+   * к var(--tg-theme-*), чтобы вид приложения не менялся от темы устройства
+   * конкретного пользователя (светлая/тёмная/кастомный акцент в Telegram).
+   * Основные:      #9E080F (красный), #231F20 (тёмный), #FFFFFF (белый)
+   * Дополнительные: #1D737E (бирюзовый), #F0CCA7 (персиковый)
+   */
   :root {
-    --bg: var(--tg-theme-bg-color, #ffffff);
-    --secondary-bg: var(--tg-theme-secondary-bg-color, #f4f4f5);
-    --text: var(--tg-theme-text-color, #1c1c1e);
-    --hint: var(--tg-theme-hint-color, #8e8e93);
-    --link: var(--tg-theme-link-color, #2481cc);
-    --button: var(--tg-theme-button-color, #2481cc);
-    --button-text: var(--tg-theme-button-text-color, #ffffff);
-    --header-bg: var(--tg-theme-header-bg-color, #ffffff);
-    --section-bg: var(--tg-theme-section-bg-color, #ffffff);
-    --border: rgba(0,0,0,0.08);
+    --bg: #FFFFFF;
+    --secondary-bg: #FAEDE0;       /* мягкий персиковый оттенок для подложек/полей */
+    --text: #231F20;
+    --hint: rgba(35, 31, 32, 0.55);
+    --link: #1D737E;
+    --button: #9E080F;
+    --button-text: #FFFFFF;
+    --header-bg: #FFFFFF;
+    --section-bg: #FFFFFF;
+    --border: rgba(35, 31, 32, 0.10);
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -208,12 +215,35 @@
     height: 30px;
     cursor: pointer;
   }
-  .stepper .qty-value {
+  .qty-mid {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    padding: 0 2px;
+  }
+  .qty-input {
+    width: 28px;
+    background: transparent;
+    border: none;
     color: var(--button-text);
     font-size: 14px;
     font-weight: 700;
-    min-width: 20px;
     text-align: center;
+    font-family: inherit;
+    -moz-appearance: textfield;
+    padding: 0;
+  }
+  .qty-input.wide { width: 46px; }
+  .qty-input::-webkit-outer-spin-button,
+  .qty-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .qty-input:focus { outline: none; }
+  .qty-unit {
+    color: var(--button-text);
+    font-size: 11px;
+    opacity: 0.85;
   }
 
   .empty-state, .loading-state {
@@ -299,7 +329,7 @@
   }
   .order-item-row:last-child { border-bottom: none; }
   .order-item-row .name { flex: 1; }
-  .order-item-row .stepper { width: auto; flex: 0 0 96px; }
+  .order-item-row .stepper { width: auto; flex: 0 0 auto; }
 
   .field {
     margin-bottom: 14px;
@@ -409,7 +439,7 @@
     </div>
 
     <button class="submit-btn" id="submitBtn">Отправить заказ</button>
-    <div id="formError" class="hint-text" style="color:#d9534f; display:none;"></div>
+    <div id="formError" class="hint-text" style="color:var(--button); display:none;"></div>
   </div>
 </div>
 
@@ -433,7 +463,7 @@
   // Вставьте сюда URL вашего Google Apps Script Web App (после деплоя).
   // Пример: "https://script.google.com/macros/s/AKfycb.../exec"
   var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqvbxtpWcq3pvgT4ym6RzRJ3GGaqQ_DJ4m4OL--2IsLzhULOVwfarrw9_ZApmz3nsIwg/exec";
-  var STORE_NAME = "Каталог товаров";
+  var STORE_NAME = "Батони Маркет";
   // ==========================
 
   document.getElementById("storeName").textContent = STORE_NAME;
@@ -442,6 +472,11 @@
   if (tg) {
     tg.ready();
     tg.expand();
+    // Фиксируем цвет системной шапки/фона Telegram под фирменный стиль —
+    // независимо от темы, выбранной у пользователя. Обёрнуто в try/catch,
+    // так как метод поддерживается не всеми версиями клиента Telegram.
+    try { tg.setHeaderColor("#ffffff"); } catch (e) {}
+    try { tg.setBackgroundColor("#ffffff"); } catch (e) {}
   }
 
   // Демо-данные — показываются, если Apps Script ещё не подключён,
@@ -502,9 +537,9 @@
   }
 
   function totalCartCount() {
-    var total = 0;
-    Object.keys(state.cart).forEach(function (id) { total += state.cart[id].qty; });
-    return total;
+    // Считаем число позиций в заказе, а не сумму количеств — при дробных
+    // весовых товарах (0.3 кг + 2 шт) сумма количеств не несёт смысла.
+    return Object.keys(state.cart).length;
   }
 
   function updateCartBar() {
@@ -521,6 +556,37 @@
     return unit ? (qty + " " + unit) : String(qty);
   }
 
+  // Единицы, которые считаются только целыми числами (штучный товар).
+  // Всё остальное (кг, литр и т.п.) можно заказывать дробно — 0.3, 1.6 и т.д.
+  var DISCRETE_UNITS = ["шт", "шт.", "уп", "компл", ""];
+
+  function isDiscreteUnit(unit) {
+    return DISCRETE_UNITS.indexOf(String(unit || "").trim().toLowerCase()) !== -1;
+  }
+
+  function qtyStep(unit) {
+    return isDiscreteUnit(unit) ? 1 : 0.1;
+  }
+
+  function roundQty(qty, unit) {
+    if (isDiscreteUnit(unit)) return Math.round(qty);
+    return Math.round(qty * 100) / 100; // до сотых, чтобы избежать 0.30000000000000004
+  }
+
+  function renderQtyInput(id, qty, unit) {
+    var discrete = isDiscreteUnit(unit);
+    var step = qtyStep(unit);
+    var widthClass = discrete ? "" : " wide";
+    var unitHtml = unit ? '<span class="qty-unit">' + escapeHtml(unit) + '</span>' : "";
+    return (
+      '<span class="qty-mid">' +
+        '<input class="qty-input' + widthClass + '" type="number" inputmode="' + (discrete ? "numeric" : "decimal") + '" ' +
+          'step="' + step + '" min="' + step + '" data-id="' + escapeHtml(id) + '" value="' + qty + '">' +
+        unitHtml +
+      '</span>'
+    );
+  }
+
   function findItemById(id) {
     for (var c = 0; c < state.categories.length; c++) {
       var items = state.categories[c].items;
@@ -534,8 +600,8 @@
   function setQty(id, qty) {
     var item = findItemById(id);
     if (!item) return;
-    qty = Math.max(0, qty);
-    if (qty === 0) {
+    qty = roundQty(qty, item.unit);
+    if (qty <= 0) {
       delete state.cart[id];
     } else {
       state.cart[id] = { name: item.name, qty: qty, article: item.article || "", unit: item.unit || "" };
@@ -554,7 +620,7 @@
     var controlHtml = qty > 0
       ? '<div class="stepper">' +
           '<button data-action="dec" data-id="' + escapeHtml(item.id) + '">−</button>' +
-          '<span class="qty-value">' + escapeHtml(qtyLabel(qty, item.unit)) + '</span>' +
+          renderQtyInput(item.id, qty, item.unit) +
           '<button data-action="inc" data-id="' + escapeHtml(item.id) + '">+</button>' +
         '</div>'
       : '<button class="add-btn" data-action="inc" data-id="' + escapeHtml(item.id) + '">Добавить в заказ</button>';
@@ -599,15 +665,35 @@
     return all;
   }
 
-  function bindCardActions() {
-    els.catalog.querySelectorAll("[data-action]").forEach(function (btn) {
+  // Общий обработчик для кнопок +/- и поля ручного ввода количества.
+  // Используется и в каталоге, и в экране оформления заказа.
+  function bindQtyControls(container, afterChange) {
+    container.querySelectorAll("[data-action]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-id");
         var action = btn.getAttribute("data-action");
+        var item = findItemById(id);
+        var step = qtyStep(item ? item.unit : "");
         var current = state.cart[id] ? state.cart[id].qty : 0;
-        setQty(id, action === "inc" ? current + 1 : current - 1);
+        setQty(id, action === "inc" ? current + step : current - step);
+        if (afterChange) afterChange();
       });
     });
+    container.querySelectorAll(".qty-input").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var id = input.getAttribute("data-id");
+        var parsed = parseFloat(String(input.value).replace(",", "."));
+        setQty(id, isNaN(parsed) ? 0 : parsed);
+        if (afterChange) afterChange();
+      });
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") input.blur();
+      });
+    });
+  }
+
+  function bindCardActions() {
+    bindQtyControls(els.catalog);
   }
 
   function renderCatalog() {
@@ -699,22 +785,16 @@
           '<span class="name">' + escapeHtml(label) + '</span>' +
           '<div class="stepper">' +
             '<button data-action="dec" data-id="' + escapeHtml(id) + '">−</button>' +
-            '<span class="qty-value">' + escapeHtml(qtyLabel(it.qty, it.unit)) + '</span>' +
+            renderQtyInput(id, it.qty, it.unit) +
             '<button data-action="inc" data-id="' + escapeHtml(id) + '">+</button>' +
           '</div>' +
         '</div>'
       );
     }).join("");
 
-    els.orderItemsList.querySelectorAll("[data-action]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var id = btn.getAttribute("data-id");
-        var action = btn.getAttribute("data-action");
-        var current = state.cart[id] ? state.cart[id].qty : 0;
-        setQty(id, action === "inc" ? current + 1 : current - 1);
-        renderOrderItems();
-        if (totalCartCount() === 0) closeOrderScreen();
-      });
+    bindQtyControls(els.orderItemsList, function () {
+      renderOrderItems();
+      if (totalCartCount() === 0) closeOrderScreen();
     });
   }
 
