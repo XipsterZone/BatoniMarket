@@ -376,6 +376,124 @@
     margin: -8px 0 16px;
   }
 
+  /* Поле выбора даты + сам календарь (bottom-sheet) */
+  .date-input {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--secondary-bg);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+  .date-input .date-placeholder { color: var(--hint); }
+  .date-input .date-icon { font-size: 15px; opacity: 0.8; }
+
+  .calendar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(35, 31, 32, 0.45);
+    z-index: 50;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .calendar-backdrop.visible { display: flex; }
+
+  .calendar-sheet {
+    width: 100%;
+    max-width: 480px;
+    background: var(--bg);
+    border-radius: 20px 20px 0 0;
+    padding: 16px 16px 26px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.18);
+  }
+
+  .calendar-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .calendar-sheet-title { font-size: 16px; font-weight: 700; }
+  .calendar-close-btn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: var(--hint);
+    cursor: pointer;
+    padding: 4px;
+    line-height: 1;
+  }
+
+  .cal-nav-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .cal-nav-btn {
+    background: var(--secondary-bg);
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .cal-nav-btn:disabled { opacity: 0.3; cursor: default; }
+  .cal-month-label {
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+
+  .cal-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--hint);
+    margin-bottom: 6px;
+  }
+
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+  }
+  .cal-day {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: none;
+    background: none;
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .cal-day.empty { visibility: hidden; cursor: default; }
+  .cal-day.disabled { color: var(--hint); opacity: 0.35; cursor: not-allowed; }
+  .cal-day.today:not(.selected) { box-shadow: inset 0 0 0 1.5px var(--link); font-weight: 700; }
+  .cal-day.selected {
+    background: var(--button);
+    color: var(--button-text);
+    font-weight: 700;
+  }
+
   .success-state {
     text-align: center;
     padding: 60px 24px;
@@ -544,6 +662,13 @@
       <textarea id="fAddress" rows="2" placeholder="Город, улица, дом, офис"></textarea>
     </div>
     <div class="field">
+      <label for="fDateBtn">Дата, на которую делается заказ</label>
+      <button type="button" class="date-input" id="fDateBtn">
+        <span id="fDateLabel" class="date-placeholder">Выберите дату</span>
+        <span class="date-icon">📅</span>
+      </button>
+    </div>
+    <div class="field">
       <label for="fName">Имя заказчика</label>
       <input type="text" id="fName" placeholder="Иван Иванов">
     </div>
@@ -618,6 +743,23 @@
   </div>
 </div>
 
+<!-- Календарь выбора даты заказа -->
+<div class="calendar-backdrop" id="calendarBackdrop">
+  <div class="calendar-sheet">
+    <div class="calendar-sheet-header">
+      <div class="calendar-sheet-title">Дата заказа</div>
+      <button type="button" class="calendar-close-btn" id="calendarCloseBtn">✕</button>
+    </div>
+    <div class="cal-nav-row">
+      <button type="button" class="cal-nav-btn" id="calPrevBtn">‹</button>
+      <div class="cal-month-label" id="calMonthLabel"></div>
+      <button type="button" class="cal-nav-btn" id="calNextBtn">›</button>
+    </div>
+    <div class="cal-weekdays" id="calWeekdays"></div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+</div>
+
 <script>
 (function () {
   "use strict";
@@ -625,7 +767,7 @@
   // ======= НАСТРОЙКИ =======
   // Вставьте сюда URL вашего Google Apps Script Web App (после деплоя).
   // Пример: "https://script.google.com/macros/s/AKfycb.../exec"
-  var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyANBYnB7jdAl3nVy9GhryawsQzFZUdTkUe9vmNXLq7ItfKmFKgdEZLlJoqN9HHWkABSQ/exec";
+  var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwqvbxtpWcq3pvgT4ym6RzRJ3GGaqQ_DJ4m4OL--2IsLzhULOVwfarrw9_ZApmz3nsIwg/exec";
   var STORE_NAME = "Батони Маркет";
   // ==========================
 
@@ -676,6 +818,7 @@
     activeCategory: null,
     searchQuery: "",
     demoMode: false,
+    orderDate: null, // выбранная дата заказа, формат "YYYY-MM-DD"
     employee: {
       token: null,
       role: null,
@@ -715,7 +858,17 @@
     employeeLogoutBtn: document.getElementById("employeeLogoutBtn"),
     employeeRefreshBtn: document.getElementById("employeeRefreshBtn"),
     employeePendingList: document.getElementById("employeePendingList"),
-    employeeHistoryList: document.getElementById("employeeHistoryList")
+    employeeHistoryList: document.getElementById("employeeHistoryList"),
+
+    fDateBtn: document.getElementById("fDateBtn"),
+    fDateLabel: document.getElementById("fDateLabel"),
+    calendarBackdrop: document.getElementById("calendarBackdrop"),
+    calendarCloseBtn: document.getElementById("calendarCloseBtn"),
+    calPrevBtn: document.getElementById("calPrevBtn"),
+    calNextBtn: document.getElementById("calNextBtn"),
+    calMonthLabel: document.getElementById("calMonthLabel"),
+    calWeekdays: document.getElementById("calWeekdays"),
+    calGrid: document.getElementById("calGrid")
   };
 
   function escapeHtml(str) {
@@ -1004,6 +1157,118 @@
   els.cartBar.addEventListener("click", openOrderScreen);
   els.backBtn.addEventListener("click", closeOrderScreen);
 
+  // ---- Календарь выбора даты заказа ----
+  // Доступны даты начиная с завтрашнего дня и на 2 недели вперёд (14 дней),
+  // без исключения каких-либо дней недели.
+
+  var MONTH_NAMES_NOM = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+  var MONTH_NAMES_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+  var WEEKDAY_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+  var WEEKDAY_FULL = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
+
+  function pad2(n) { return n < 10 ? "0" + n : String(n); }
+  function isoDate(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+  // Понедельник = 0 ... воскресенье = 6 (вместо стандартного Date#getDay(), где 0 = воскресенье)
+  function mondayFirstDay(d) { return (d.getDay() + 6) % 7; }
+
+  var calToday = new Date();
+  calToday.setHours(0, 0, 0, 0);
+  var calMinDate = new Date(calToday); calMinDate.setDate(calMinDate.getDate() + 1); // с завтра
+  var calMaxDate = new Date(calToday); calMaxDate.setDate(calMaxDate.getDate() + 14); // 2 недели вперёд
+
+  var calState = {
+    viewYear: calMinDate.getFullYear(),
+    viewMonth: calMinDate.getMonth() // 0-based
+  };
+
+  function renderCalendar() {
+    els.calWeekdays.innerHTML = WEEKDAY_SHORT.map(function (w) { return "<div>" + w + "</div>"; }).join("");
+    els.calMonthLabel.textContent = MONTH_NAMES_NOM[calState.viewMonth] + " " + calState.viewYear;
+
+    var firstOfMonth = new Date(calState.viewYear, calState.viewMonth, 1);
+    var daysInMonth = new Date(calState.viewYear, calState.viewMonth + 1, 0).getDate();
+    var leadingEmpty = mondayFirstDay(firstOfMonth);
+    var todayIso = isoDate(calToday);
+
+    var cells = [];
+    for (var e = 0; e < leadingEmpty; e++) {
+      cells.push('<span class="cal-day empty"></span>');
+    }
+    for (var day = 1; day <= daysInMonth; day++) {
+      var d = new Date(calState.viewYear, calState.viewMonth, day);
+      var iso = isoDate(d);
+      var disabled = d < calMinDate || d > calMaxDate;
+      var classes = "cal-day";
+      if (disabled) classes += " disabled";
+      if (iso === todayIso) classes += " today";
+      if (state.orderDate && iso === state.orderDate) classes += " selected";
+      cells.push(
+        '<button type="button" class="' + classes + '" data-iso="' + iso + '"' +
+          (disabled ? " disabled" : "") + '>' + day + '</button>'
+      );
+    }
+    els.calGrid.innerHTML = cells.join("");
+
+    els.calGrid.querySelectorAll(".cal-day:not(.disabled):not(.empty)").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        selectOrderDate(btn.getAttribute("data-iso"));
+      });
+    });
+
+    // Навигация не должна уходить за пределы разрешённого диапазона дат (calMinDate..calMaxDate)
+    var viewingMinMonth = calState.viewYear === calMinDate.getFullYear() && calState.viewMonth === calMinDate.getMonth();
+    var viewingMaxMonth = calState.viewYear === calMaxDate.getFullYear() && calState.viewMonth === calMaxDate.getMonth();
+    els.calPrevBtn.disabled = viewingMinMonth;
+    els.calNextBtn.disabled = viewingMaxMonth;
+  }
+
+  function selectOrderDate(iso) {
+    state.orderDate = iso;
+    var parts = iso.split("-").map(Number);
+    var d = new Date(parts[0], parts[1] - 1, parts[2]);
+    var label = d.getDate() + " " + MONTH_NAMES_GEN[d.getMonth()] + ", " + WEEKDAY_FULL[mondayFirstDay(d)];
+    els.fDateLabel.textContent = label;
+    els.fDateLabel.classList.remove("date-placeholder");
+    closeCalendar();
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
+  }
+
+  function openCalendar() {
+    // Открываем на месяце уже выбранной даты, если она есть, иначе — на самой ранней доступной
+    if (state.orderDate) {
+      var parts = state.orderDate.split("-").map(Number);
+      calState.viewYear = parts[0];
+      calState.viewMonth = parts[1] - 1;
+    } else {
+      calState.viewYear = calMinDate.getFullYear();
+      calState.viewMonth = calMinDate.getMonth();
+    }
+    renderCalendar();
+    els.calendarBackdrop.classList.add("visible");
+  }
+
+  function closeCalendar() {
+    els.calendarBackdrop.classList.remove("visible");
+  }
+
+  els.fDateBtn.addEventListener("click", openCalendar);
+  els.calendarCloseBtn.addEventListener("click", closeCalendar);
+  els.calendarBackdrop.addEventListener("click", function (e) {
+    if (e.target === els.calendarBackdrop) closeCalendar(); // клик по тёмной подложке — закрыть
+  });
+  els.calPrevBtn.addEventListener("click", function () {
+    calState.viewMonth -= 1;
+    if (calState.viewMonth < 0) { calState.viewMonth = 11; calState.viewYear -= 1; }
+    renderCalendar();
+  });
+  els.calNextBtn.addEventListener("click", function () {
+    calState.viewMonth += 1;
+    if (calState.viewMonth > 11) { calState.viewMonth = 0; calState.viewYear += 1; }
+    renderCalendar();
+  });
+
   function showFormError(msg) {
     els.formError.textContent = msg;
     els.formError.style.display = "block";
@@ -1016,6 +1281,7 @@
     return {
       company: document.getElementById("fCompany").value.trim(),
       address: document.getElementById("fAddress").value.trim(),
+      orderDate: state.orderDate || "",
       customerName: document.getElementById("fName").value.trim(),
       phone: document.getElementById("fPhone").value.trim(),
       email: document.getElementById("fEmail").value.trim()
@@ -1025,6 +1291,7 @@
   function validateForm(data) {
     if (!data.company) return "Укажите название организации";
     if (!data.address) return "Укажите адрес доставки";
+    if (!data.orderDate) return "Укажите дату, на которую делается заказ";
     if (!data.customerName) return "Укажите имя заказчика";
     if (!data.phone) return "Укажите номер телефона";
     if (!data.email) return "Укажите email";
@@ -1061,6 +1328,7 @@
     var payload = {
       company: formData.company,
       address: formData.address,
+      orderDate: formData.orderDate,
       customerName: formData.customerName,
       phone: formData.phone,
       email: formData.email,
@@ -1110,6 +1378,9 @@
     ["fCompany", "fAddress", "fName", "fPhone", "fEmail"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
+    state.orderDate = null;
+    els.fDateLabel.textContent = "Выберите дату";
+    els.fDateLabel.classList.add("date-placeholder");
     if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
   }
 
