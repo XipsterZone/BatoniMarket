@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Каталог товаров</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  /*
+   * Фирменная палитра (Batoni), зафиксирована сознательно — НЕ привязана
+   * к var(--tg-theme-*), чтобы вид приложения не менялся от темы устройства
+   * конкретного пользователя (светлая/тёмная/кастомный акцент в Telegram).
+   * Основные:      #9E080F (красный), #231F20 (тёмный), #FFFFFF (белый)
+   * Дополнительные: #1D737E (бирюзовый), #F0CCA7 (персиковый)
+   */
+  :root {
+    --bg: #FFFFFF;
+    --secondary-bg: #FAEDE0;       /* мягкий персиковый оттенок для подложек/полей */
+    --text: #231F20;
+    --hint: rgba(35, 31, 32, 0.55);
+    --link: #1D737E;
+    --button: #9E080F;
+    --button-text: #FFFFFF;
+    --header-bg: #FFFFFF;
+    --section-bg: #FFFFFF;
+    --border: rgba(35, 31, 32, 0.10);
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: 90px;
+  }
+
+  header.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--header-bg);
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  header.app-header h1 {
+    margin: 0 0 10px;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .categories {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .categories::-webkit-scrollbar { display: none; }
+
+  .cat-pill {
+    flex: 0 0 auto;
+    padding: 8px 14px;
+    border-radius: 16px;
+    background: var(--secondary-bg);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .cat-pill.active {
+    background: var(--button);
+    color: var(--button-text);
+  }
+
+  main { padding: 14px 16px; }
+
+  .search-wrap {
+    position: relative;
+    margin-bottom: 10px;
+  }
+  .search-wrap input {
+    width: 100%;
+    padding: 10px 34px 10px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--secondary-bg);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+  }
+  .search-wrap input:focus {
+    outline: 2px solid var(--button);
+    outline-offset: -1px;
+  }
+  .search-clear {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--hint);
+    font-size: 16px;
+    line-height: 1;
+    padding: 6px;
+    cursor: pointer;
+    display: none;
+  }
+  .search-clear.visible { display: block; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .card {
+    background: var(--section-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .card-image {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--secondary-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .card-image .placeholder {
+    color: var(--hint);
+    font-size: 12px;
+    text-align: center;
+    padding: 8px;
+  }
+
+  .card-body {
+    padding: 8px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+  }
+
+  .card-name {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  .card-desc {
+    font-size: 12px;
+    color: var(--hint);
+    line-height: 1.3;
+    flex: 1;
+  }
+
+  .card-article {
+    font-size: 11px;
+    color: var(--hint);
+    opacity: 0.8;
+  }
+
+  .qty-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+
+  .add-btn {
+    width: 100%;
+    padding: 7px 0;
+    border-radius: 10px;
+    border: none;
+    background: var(--secondary-bg);
+    color: var(--link);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .stepper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: var(--button);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .stepper button {
+    background: none;
+    border: none;
+    color: var(--button-text);
+    font-size: 16px;
+    font-weight: 700;
+    width: 32px;
+    height: 30px;
+    cursor: pointer;
+  }
+  .qty-mid {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    padding: 0 2px;
+  }
+  .qty-input {
+    width: 28px;
+    background: transparent;
+    border: none;
+    color: var(--button-text);
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+    font-family: inherit;
+    -moz-appearance: textfield;
+    padding: 0;
+  }
+  .qty-input.wide { width: 46px; }
+  .qty-input::-webkit-outer-spin-button,
+  .qty-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .qty-input:focus { outline: none; }
+  .qty-unit {
+    color: var(--button-text);
+    font-size: 11px;
+    opacity: 0.85;
+  }
+
+  .empty-state, .loading-state {
+    text-align: center;
+    color: var(--hint);
+    padding: 60px 20px;
+    font-size: 14px;
+  }
+
+  /* Cart bar */
+  .cart-bar {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    background: var(--button);
+    color: var(--button-text);
+    border-radius: 14px;
+    padding: 14px 18px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+  }
+  .cart-bar.visible { display: flex; }
+
+  /* Order screen */
+  .screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+  }
+  .screen.visible { display: flex; }
+
+  .screen-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--header-bg);
+  }
+  .screen-header .back-btn {
+    background: none;
+    border: none;
+    color: var(--link);
+    font-size: 15px;
+    cursor: pointer;
+    padding: 0;
+  }
+  .screen-header h2 {
+    font-size: 17px;
+    margin: 0;
+  }
+
+  .screen-body {
+    padding: 16px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .order-items {
+    background: var(--section-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px 12px;
+    margin-bottom: 20px;
+  }
+  .order-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    gap: 10px;
+  }
+  .order-item-row:last-child { border-bottom: none; }
+  .order-item-row .name { flex: 1; }
+  .order-item-row .stepper { width: auto; flex: 0 0 auto; }
+
+  .field {
+    margin-bottom: 14px;
+  }
+  .field label {
+    display: block;
+    font-size: 13px;
+    color: var(--hint);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .field input, .field textarea {
+    width: 100%;
+    padding: 11px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--secondary-bg);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+  }
+  .field input:focus, .field textarea:focus {
+    outline: 2px solid var(--button);
+    outline-offset: -1px;
+  }
+
+  .submit-btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    border: none;
+    background: var(--button);
+    color: var(--button-text);
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 6px;
+  }
+  .submit-btn:disabled { opacity: 0.5; }
+
+  .hint-text {
+    font-size: 12px;
+    color: var(--hint);
+    margin: -8px 0 16px;
+  }
+
+  .success-state {
+    text-align: center;
+    padding: 60px 24px;
+  }
+  .success-state .icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+  }
+  .success-state h2 { margin: 0 0 8px; font-size: 18px; }
+  .success-state p { color: var(--hint); font-size: 14px; margin: 0 0 24px; }
+
+  /* Role select + employee screens */
+  .screen.role-screen,
+  #employeeLoginScreen,
+  #employeeScreen {
+    z-index: 30;
+  }
+
+  .role-screen-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    gap: 14px;
+    height: 100%;
+    padding: 24px;
+  }
+  .role-logo {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--button);
+    margin-bottom: 24px;
+  }
+  .role-btn {
+    padding: 18px;
+    border-radius: 14px;
+    border: none;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .role-btn-primary {
+    background: var(--button);
+    color: var(--button-text);
+  }
+  .role-btn-secondary {
+    background: var(--secondary-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .header-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .employee-entry-link {
+    background: none;
+    border: none;
+    color: var(--hint);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px;
+    white-space: nowrap;
+  }
+
+  .screen-header .refresh-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--link);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .purchase-row {
+    background: var(--section-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .purchase-row .p-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .purchase-row .p-meta { font-size: 12px; color: var(--hint); }
+  .purchase-row .p-ordered { margin-bottom: 10px; }
+  .purchase-row .p-inputs { display: flex; gap: 8px; }
+  .purchase-row .p-inputs .field { flex: 1; margin-bottom: 0; }
+  .purchase-row .p-inputs input { padding: 9px 10px; font-size: 14px; }
+  .purchase-row .p-save {
+    margin-top: 10px;
+    width: 100%;
+    padding: 9px;
+    border-radius: 10px;
+    border: none;
+    background: var(--button);
+    color: var(--button-text);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .purchase-row .p-save:disabled { opacity: 0.5; }
+  .purchase-status {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--link);
+  }
+  .purchase-error {
+    font-size: 12px;
+    color: var(--button);
+    margin-top: 6px;
+    display: none;
+  }
+
+  .history-row {
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+    font-size: 12px;
+    color: var(--hint);
+  }
+  .history-row .h-name { color: var(--text); font-weight: 600; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-top-row">
+    <h1 id="storeName">Каталог товаров</h1>
+    <button class="employee-entry-link" id="employeeEntryLink" type="button">Вход для сотрудников</button>
+  </div>
+  <div class="search-wrap">
+    <input type="text" id="searchInput" placeholder="Поиск по названию…" autocomplete="off">
+    <button class="search-clear" id="searchClear" type="button">✕</button>
+  </div>
+  <div class="categories" id="categories"></div>
+</header>
+
+<main id="catalog">
+  <div class="loading-state">Загружаем каталог…</div>
+</main>
+
+<div class="cart-bar" id="cartBar">
+  <span id="cartBarText">В заказе: 0</span>
+  <span>Оформить →</span>
+</div>
+
+<!-- Order screen -->
+<div class="screen" id="orderScreen">
+  <div class="screen-header">
+    <button class="back-btn" id="backBtn">‹ Назад</button>
+    <h2>Оформление заказа</h2>
+  </div>
+  <div class="screen-body" id="orderScreenBody">
+    <div class="order-items" id="orderItemsList"></div>
+
+    <div class="field">
+      <label for="fCompany">Название организации</label>
+      <input type="text" id="fCompany" placeholder="ООО «Ромашка»">
+    </div>
+    <div class="field">
+      <label for="fAddress">Адрес доставки заказа</label>
+      <textarea id="fAddress" rows="2" placeholder="Город, улица, дом, офис"></textarea>
+    </div>
+    <div class="field">
+      <label for="fName">Имя заказчика</label>
+      <input type="text" id="fName" placeholder="Иван Иванов">
+    </div>
+    <div class="field">
+      <label for="fPhone">Номер телефона заказчика</label>
+      <input type="tel" id="fPhone" placeholder="+7 900 000-00-00">
+    </div>
+    <div class="field">
+      <label for="fEmail">Почта заказчика</label>
+      <input type="email" id="fEmail" placeholder="name@example.com">
+    </div>
+
+    <button class="submit-btn" id="submitBtn">Отправить заказ</button>
+    <div id="formError" class="hint-text" style="color:var(--button); display:none;"></div>
+  </div>
+</div>
+
+<!-- Success screen -->
+<div class="screen" id="successScreen">
+  <div class="screen-body">
+    <div class="success-state">
+      <div class="icon">✅</div>
+      <h2>Заказ отправлен</h2>
+      <p>Мы получили ваш заказ и скоро свяжемся с вами.</p>
+      <button class="submit-btn" id="successCloseBtn">Готово</button>
+    </div>
+  </div>
+</div>
+
+<!-- Role select screen (первый экран при запуске) -->
+<div class="screen role-screen visible" id="roleScreen">
+  <div class="screen-body role-screen-body">
+    <div class="role-logo" id="roleLogo">Батони Маркет</div>
+    <button class="role-btn role-btn-primary" id="btnRoleClient">Я — клиент</button>
+    <button class="role-btn role-btn-secondary" id="btnRoleEmployee">Я — сотрудник</button>
+  </div>
+</div>
+
+<!-- Employee login screen -->
+<div class="screen" id="employeeLoginScreen">
+  <div class="screen-header">
+    <button class="back-btn" id="employeeLoginBack">‹ Назад</button>
+    <h2>Вход для сотрудников</h2>
+  </div>
+  <div class="screen-body">
+    <div class="field">
+      <label for="fEmpLogin">Логин</label>
+      <input type="text" id="fEmpLogin" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="fEmpPassword">Пароль</label>
+      <input type="password" id="fEmpPassword" autocomplete="off">
+    </div>
+    <button class="submit-btn" id="employeeLoginSubmit">Войти</button>
+    <div id="employeeLoginError" class="hint-text" style="color:var(--button); display:none;"></div>
+  </div>
+</div>
+
+<!-- Employee purchasing screen ("Закупка") -->
+<div class="screen" id="employeeScreen">
+  <div class="screen-header">
+    <button class="back-btn" id="employeeLogoutBtn">‹ Выйти</button>
+    <h2>Закупка</h2>
+    <button class="refresh-btn" id="employeeRefreshBtn">Обновить ↻</button>
+  </div>
+  <div class="screen-body">
+    <div class="hint-text" style="margin-top:0;">Товары, заказанные клиентами и ещё не закупленные. Введите фактически купленное количество и цену за единицу.</div>
+    <div id="employeePendingList"></div>
+
+    <h2 style="font-size:15px; margin:24px 0 10px;">История закупок</h2>
+    <div id="employeeHistoryList"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ======= НАСТРОЙКИ =======
+  // Вставьте сюда URL вашего Google Apps Script Web App (после деплоя).
+  // Пример: "https://script.google.com/macros/s/AKfycb.../exec"
+  var APPS_SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+  var STORE_NAME = "Каталог товаров";
+  // ==========================
+
+  document.getElementById("storeName").textContent = STORE_NAME;
+  document.getElementById("roleLogo").textContent = STORE_NAME;
+
+  var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    // Фиксируем цвет системной шапки/фона Telegram под фирменный стиль —
+    // независимо от темы, выбранной у пользователя. Обёрнуто в try/catch,
+    // так как метод поддерживается не всеми версиями клиента Telegram.
+    try { tg.setHeaderColor("#ffffff"); } catch (e) {}
+    try { tg.setBackgroundColor("#ffffff"); } catch (e) {}
+  }
+
+  // Демо-данные — показываются, если Apps Script ещё не подключён,
+  // чтобы можно было сразу увидеть, как выглядит приложение.
+  var DEMO_PRODUCTS = [
+    {
+      category: "Напитки",
+      items: [
+        { id: "demo1", name: "Кофе в зёрнах, 1 кг", description: "Арабика, средняя обжарка", imageUrl: "", article: "КОФ-001", unit: "кг" },
+        { id: "demo2", name: "Чай чёрный листовой", description: "Цейлонский, 250 г", imageUrl: "", article: "ЧАЙ-014", unit: "уп" },
+        { id: "demo3", name: "Какао-порошок", description: "Натуральный, 200 г", imageUrl: "", article: "КАК-002", unit: "уп" }
+      ]
+    },
+    {
+      category: "Посуда",
+      items: [
+        { id: "demo4", name: "Керамическая кружка", description: "Объём 350 мл", imageUrl: "", article: "ПОС-101", unit: "шт" },
+        { id: "demo5", name: "Стеклянный стакан", description: "Набор из 2 шт.", imageUrl: "", article: "ПОС-102", unit: "компл" }
+      ]
+    },
+    {
+      category: "Аксессуары",
+      items: [
+        { id: "demo6", name: "Тканевая салфетка", description: "Хлопок, набор 4 шт.", imageUrl: "", article: "АКС-201", unit: "уп" },
+        { id: "demo7", name: "Деревянная подставка", description: "Под горячее", imageUrl: "", article: "АКС-202", unit: "шт" }
+      ]
+    }
+  ];
+
+  var state = {
+    categories: [],   // [{category, items:[{id,name,description,imageUrl}]}]
+    cart: {},         // id -> {name, qty}
+    activeCategory: null,
+    searchQuery: "",
+    demoMode: false,
+    employee: {
+      token: null,
+      role: null,
+      pending: [],
+      history: []
+    }
+  };
+
+  var els = {
+    categories: document.getElementById("categories"),
+    catalog: document.getElementById("catalog"),
+    searchInput: document.getElementById("searchInput"),
+    searchClear: document.getElementById("searchClear"),
+    cartBar: document.getElementById("cartBar"),
+    cartBarText: document.getElementById("cartBarText"),
+    orderScreen: document.getElementById("orderScreen"),
+    successScreen: document.getElementById("successScreen"),
+    orderItemsList: document.getElementById("orderItemsList"),
+    backBtn: document.getElementById("backBtn"),
+    submitBtn: document.getElementById("submitBtn"),
+    formError: document.getElementById("formError"),
+    successCloseBtn: document.getElementById("successCloseBtn"),
+
+    roleScreen: document.getElementById("roleScreen"),
+    btnRoleClient: document.getElementById("btnRoleClient"),
+    btnRoleEmployee: document.getElementById("btnRoleEmployee"),
+    employeeEntryLink: document.getElementById("employeeEntryLink"),
+
+    employeeLoginScreen: document.getElementById("employeeLoginScreen"),
+    employeeLoginBack: document.getElementById("employeeLoginBack"),
+    employeeLoginSubmit: document.getElementById("employeeLoginSubmit"),
+    employeeLoginError: document.getElementById("employeeLoginError"),
+    fEmpLogin: document.getElementById("fEmpLogin"),
+    fEmpPassword: document.getElementById("fEmpPassword"),
+
+    employeeScreen: document.getElementById("employeeScreen"),
+    employeeLogoutBtn: document.getElementById("employeeLogoutBtn"),
+    employeeRefreshBtn: document.getElementById("employeeRefreshBtn"),
+    employeePendingList: document.getElementById("employeePendingList"),
+    employeeHistoryList: document.getElementById("employeeHistoryList")
+  };
+
+  function escapeHtml(str) {
+    return String(str == null ? "" : str)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function totalCartCount() {
+    // Считаем число позиций в заказе, а не сумму количеств — при дробных
+    // весовых товарах (0.3 кг + 2 шт) сумма количеств не несёт смысла.
+    return Object.keys(state.cart).length;
+  }
+
+  function updateCartBar() {
+    var count = totalCartCount();
+    if (count > 0) {
+      els.cartBar.classList.add("visible");
+      els.cartBarText.textContent = "В заказе: " + count + (count === 1 ? " товар" : count < 5 ? " товара" : " товаров");
+    } else {
+      els.cartBar.classList.remove("visible");
+    }
+  }
+
+  function qtyLabel(qty, unit) {
+    return unit ? (qty + " " + unit) : String(qty);
+  }
+
+  // Единицы, которые считаются только целыми числами (штучный товар).
+  // Всё остальное (кг, литр и т.п.) можно заказывать дробно — 0.3, 1.6 и т.д.
+  var DISCRETE_UNITS = ["шт", "шт.", "уп", "компл", ""];
+
+  function isDiscreteUnit(unit) {
+    return DISCRETE_UNITS.indexOf(String(unit || "").trim().toLowerCase()) !== -1;
+  }
+
+  function qtyStep(unit) {
+    return isDiscreteUnit(unit) ? 1 : 0.1;
+  }
+
+  function roundQty(qty, unit) {
+    if (isDiscreteUnit(unit)) return Math.round(qty);
+    return Math.round(qty * 100) / 100; // до сотых, чтобы избежать 0.30000000000000004
+  }
+
+  function renderQtyInput(id, qty, unit) {
+    var discrete = isDiscreteUnit(unit);
+    var step = qtyStep(unit);
+    var widthClass = discrete ? "" : " wide";
+    var unitHtml = unit ? '<span class="qty-unit">' + escapeHtml(unit) + '</span>' : "";
+    return (
+      '<span class="qty-mid">' +
+        '<input class="qty-input' + widthClass + '" type="number" inputmode="' + (discrete ? "numeric" : "decimal") + '" ' +
+          'step="' + step + '" min="' + step + '" data-id="' + escapeHtml(id) + '" value="' + qty + '">' +
+        unitHtml +
+      '</span>'
+    );
+  }
+
+  function findItemById(id) {
+    for (var c = 0; c < state.categories.length; c++) {
+      var items = state.categories[c].items;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].id === id) return items[i];
+      }
+    }
+    return null;
+  }
+
+  function setQty(id, qty) {
+    var item = findItemById(id);
+    if (!item) return;
+    qty = roundQty(qty, item.unit);
+    if (qty <= 0) {
+      delete state.cart[id];
+    } else {
+      state.cart[id] = { name: item.name, qty: qty, article: item.article || "", unit: item.unit || "" };
+    }
+    renderCatalog();
+    updateCartBar();
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
+  }
+
+  function cardTemplate(item) {
+    var qty = state.cart[item.id] ? state.cart[item.id].qty : 0;
+    var imageHtml = item.imageUrl
+      ? '<img src="' + escapeHtml(item.imageUrl) + '" alt="" loading="lazy">'
+      : '<div class="placeholder">Фото скоро будет</div>';
+
+    var controlHtml = qty > 0
+      ? '<div class="stepper">' +
+          '<button data-action="dec" data-id="' + escapeHtml(item.id) + '">−</button>' +
+          renderQtyInput(item.id, qty, item.unit) +
+          '<button data-action="inc" data-id="' + escapeHtml(item.id) + '">+</button>' +
+        '</div>'
+      : '<button class="add-btn" data-action="inc" data-id="' + escapeHtml(item.id) + '">Добавить в заказ</button>';
+
+    return (
+      '<div class="card">' +
+        '<div class="card-image">' + imageHtml + '</div>' +
+        '<div class="card-body">' +
+          '<div class="card-name">' + escapeHtml(item.name) + '</div>' +
+          (item.description ? '<div class="card-desc">' + escapeHtml(item.description) + '</div>' : '') +
+          (item.article ? '<div class="card-article">Арт. ' + escapeHtml(item.article) + '</div>' : '') +
+          '<div class="qty-row">' + controlHtml + '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderCategoryPills() {
+    var searching = state.searchQuery.trim().length > 0;
+    els.categories.innerHTML = state.categories.map(function (c) {
+      var active = (!searching && c.category === state.activeCategory) ? " active" : "";
+      return '<button class="cat-pill' + active + '" data-cat="' + escapeHtml(c.category) + '">' + escapeHtml(c.category) + '</button>';
+    }).join("");
+
+    els.categories.querySelectorAll(".cat-pill").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.activeCategory = btn.getAttribute("data-cat");
+        state.searchQuery = "";
+        els.searchInput.value = "";
+        els.searchClear.classList.remove("visible");
+        renderCategoryPills();
+        renderCatalog();
+      });
+    });
+  }
+
+  function getAllItems() {
+    var all = [];
+    state.categories.forEach(function (c) {
+      c.items.forEach(function (it) { all.push(it); });
+    });
+    return all;
+  }
+
+  // Общий обработчик для кнопок +/- и поля ручного ввода количества.
+  // Используется и в каталоге, и в экране оформления заказа.
+  function bindQtyControls(container, afterChange) {
+    container.querySelectorAll("[data-action]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-id");
+        var action = btn.getAttribute("data-action");
+        var item = findItemById(id);
+        var step = qtyStep(item ? item.unit : "");
+        var current = state.cart[id] ? state.cart[id].qty : 0;
+        setQty(id, action === "inc" ? current + step : current - step);
+        if (afterChange) afterChange();
+      });
+    });
+    container.querySelectorAll(".qty-input").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var id = input.getAttribute("data-id");
+        var parsed = parseFloat(String(input.value).replace(",", "."));
+        setQty(id, isNaN(parsed) ? 0 : parsed);
+        if (afterChange) afterChange();
+      });
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") input.blur();
+      });
+    });
+  }
+
+  function bindCardActions() {
+    bindQtyControls(els.catalog);
+  }
+
+  function renderCatalog() {
+    if (!state.categories.length) {
+      els.catalog.innerHTML = '<div class="empty-state">Каталог пока пуст</div>';
+      return;
+    }
+
+    var query = state.searchQuery.trim().toLowerCase();
+
+    if (query) {
+      var matches = getAllItems().filter(function (it) {
+        return it.name.toLowerCase().indexOf(query) !== -1;
+      });
+      els.catalog.innerHTML = matches.length
+        ? '<div class="grid">' + matches.map(cardTemplate).join("") + '</div>'
+        : '<div class="empty-state">Ничего не найдено по запросу «' + escapeHtml(state.searchQuery.trim()) + '»</div>';
+      bindCardActions();
+      return;
+    }
+
+    var current = state.categories.filter(function (c) { return c.category === state.activeCategory; })[0];
+    if (!current || !current.items.length) {
+      els.catalog.innerHTML = '<div class="empty-state">В этой категории пока нет товаров</div>';
+      return;
+    }
+
+    els.catalog.innerHTML = '<div class="grid">' + current.items.map(cardTemplate).join("") + '</div>';
+    bindCardActions();
+  }
+
+  function loadProducts() {
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") === 0) {
+      state.demoMode = true;
+      state.categories = DEMO_PRODUCTS;
+      state.activeCategory = DEMO_PRODUCTS[0] && DEMO_PRODUCTS[0].category;
+      renderCategoryPills();
+      renderCatalog();
+      return;
+    }
+
+    fetch(APPS_SCRIPT_URL + "?action=products")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        state.categories = Array.isArray(data) ? data : [];
+        state.activeCategory = state.categories[0] && state.categories[0].category;
+        renderCategoryPills();
+        renderCatalog();
+      })
+      .catch(function (err) {
+        console.error(err);
+        state.demoMode = true;
+        state.categories = DEMO_PRODUCTS;
+        state.activeCategory = DEMO_PRODUCTS[0] && DEMO_PRODUCTS[0].category;
+        renderCategoryPills();
+        renderCatalog();
+      });
+  }
+
+  els.searchInput.addEventListener("input", function () {
+    state.searchQuery = els.searchInput.value;
+    els.searchClear.classList.toggle("visible", state.searchQuery.length > 0);
+    renderCategoryPills();
+    renderCatalog();
+  });
+
+  els.searchClear.addEventListener("click", function () {
+    state.searchQuery = "";
+    els.searchInput.value = "";
+    els.searchClear.classList.remove("visible");
+    renderCategoryPills();
+    renderCatalog();
+    els.searchInput.focus();
+  });
+
+  // ---- Order screen ----
+
+  function renderOrderItems() {
+    var ids = Object.keys(state.cart);
+    if (!ids.length) {
+      els.orderItemsList.innerHTML = '<div class="order-item-row"><span class="name">Корзина пуста</span></div>';
+      return;
+    }
+    els.orderItemsList.innerHTML = ids.map(function (id) {
+      var it = state.cart[id];
+      var label = it.name + (it.article ? " (арт. " + it.article + ")" : "");
+      return (
+        '<div class="order-item-row">' +
+          '<span class="name">' + escapeHtml(label) + '</span>' +
+          '<div class="stepper">' +
+            '<button data-action="dec" data-id="' + escapeHtml(id) + '">−</button>' +
+            renderQtyInput(id, it.qty, it.unit) +
+            '<button data-action="inc" data-id="' + escapeHtml(id) + '">+</button>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join("");
+
+    bindQtyControls(els.orderItemsList, function () {
+      renderOrderItems();
+      if (totalCartCount() === 0) closeOrderScreen();
+    });
+  }
+
+  function openOrderScreen() {
+    renderOrderItems();
+    els.orderScreen.classList.add("visible");
+    if (tg && tg.BackButton) {
+      tg.BackButton.show();
+      tg.BackButton.onClick(closeOrderScreen);
+    }
+    if (tg && tg.MainButton) tg.MainButton.hide();
+  }
+
+  function closeOrderScreen() {
+    els.orderScreen.classList.remove("visible");
+    if (tg && tg.BackButton) tg.BackButton.hide();
+  }
+
+  els.cartBar.addEventListener("click", openOrderScreen);
+  els.backBtn.addEventListener("click", closeOrderScreen);
+
+  function showFormError(msg) {
+    els.formError.textContent = msg;
+    els.formError.style.display = "block";
+  }
+  function clearFormError() {
+    els.formError.style.display = "none";
+  }
+
+  function collectFormData() {
+    return {
+      company: document.getElementById("fCompany").value.trim(),
+      address: document.getElementById("fAddress").value.trim(),
+      customerName: document.getElementById("fName").value.trim(),
+      phone: document.getElementById("fPhone").value.trim(),
+      email: document.getElementById("fEmail").value.trim()
+    };
+  }
+
+  function validateForm(data) {
+    if (!data.company) return "Укажите название организации";
+    if (!data.address) return "Укажите адрес доставки";
+    if (!data.customerName) return "Укажите имя заказчика";
+    if (!data.phone) return "Укажите номер телефона";
+    if (!data.email) return "Укажите email";
+    var emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email);
+    if (!emailOk) return "Проверьте формат email";
+    return null;
+  }
+
+  function submitOrder() {
+    clearFormError();
+    if (totalCartCount() === 0) {
+      showFormError("Добавьте хотя бы один товар в заказ");
+      return;
+    }
+    var formData = collectFormData();
+    var error = validateForm(formData);
+    if (error) {
+      showFormError(error);
+      return;
+    }
+
+    var items = Object.keys(state.cart).map(function (id) {
+      return {
+        id: id,
+        name: state.cart[id].name,
+        qty: state.cart[id].qty,
+        article: state.cart[id].article || "",
+        unit: state.cart[id].unit || ""
+      };
+    });
+
+    var tgUser = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : {};
+
+    var payload = {
+      company: formData.company,
+      address: formData.address,
+      customerName: formData.customerName,
+      phone: formData.phone,
+      email: formData.email,
+      items: items,
+      tgUserId: tgUser.id || "",
+      tgUsername: tgUser.username || ""
+    };
+
+    els.submitBtn.disabled = true;
+    els.submitBtn.textContent = "Отправляем…";
+
+    if (state.demoMode) {
+      // В демо-режиме (без подключённого Apps Script) просто показываем успех.
+      setTimeout(function () { onOrderSuccess(); }, 500);
+      return;
+    }
+
+    fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" }, // избегаем CORS preflight
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res && res.ok) {
+          onOrderSuccess();
+        } else {
+          throw new Error((res && res.error) || "Неизвестная ошибка");
+        }
+      })
+      .catch(function (err) {
+        console.error(err);
+        showFormError("Не удалось отправить заказ. Попробуйте ещё раз.");
+        els.submitBtn.disabled = false;
+        els.submitBtn.textContent = "Отправить заказ";
+      });
+  }
+
+  function onOrderSuccess() {
+    state.cart = {};
+    updateCartBar();
+    renderCatalog();
+    closeOrderScreen();
+    els.successScreen.classList.add("visible");
+    els.submitBtn.disabled = false;
+    els.submitBtn.textContent = "Отправить заказ";
+    ["fCompany", "fAddress", "fName", "fPhone", "fEmail"].forEach(function (id) {
+      document.getElementById(id).value = "";
+    });
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+  }
+
+  els.submitBtn.addEventListener("click", submitOrder);
+  els.successCloseBtn.addEventListener("click", function () {
+    els.successScreen.classList.remove("visible");
+  });
+
+  // ---- Роль: клиент / сотрудник ----
+  // Экран выбора роли перекрывает весь каталог до тех пор, пока не нажата
+  // одна из кнопок. "Я — клиент" просто открывает обычный каталог (без
+  // логина — доступ к каталогу как и раньше не ограничен отдельными
+  // учётками). "Я — сотрудник" ведёт на форму логина/пароля, проверка
+  // которых происходит на сервере (Code.gs) по листу "Доступ".
+
+  function showServiceScreen(el) {
+    [els.roleScreen, els.employeeLoginScreen, els.employeeScreen].forEach(function (s) {
+      s.classList.remove("visible");
+    });
+    if (el) el.classList.add("visible");
+  }
+
+  els.btnRoleClient.addEventListener("click", function () {
+    showServiceScreen(null); // все служебные экраны скрыты — виден каталог
+  });
+
+  els.btnRoleEmployee.addEventListener("click", function () {
+    els.employeeLoginError.style.display = "none";
+    showServiceScreen(els.employeeLoginScreen);
+  });
+
+  els.employeeEntryLink.addEventListener("click", function () {
+    els.employeeLoginError.style.display = "none";
+    showServiceScreen(els.employeeLoginScreen);
+  });
+
+  els.employeeLoginBack.addEventListener("click", function () {
+    showServiceScreen(els.roleScreen);
+  });
+
+  function employeeLoginErrorShow(msg) {
+    els.employeeLoginError.textContent = msg;
+    els.employeeLoginError.style.display = "block";
+  }
+
+  els.employeeLoginSubmit.addEventListener("click", function () {
+    var login = els.fEmpLogin.value.trim();
+    var password = els.fEmpPassword.value;
+    els.employeeLoginError.style.display = "none";
+
+    if (!login || !password) {
+      employeeLoginErrorShow("Введите логин и пароль");
+      return;
+    }
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") === 0) {
+      employeeLoginErrorShow("Раздел для сотрудников недоступен в демо-режиме — сначала подключите Apps Script URL");
+      return;
+    }
+
+    els.employeeLoginSubmit.disabled = true;
+    els.employeeLoginSubmit.textContent = "Входим…";
+
+    fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "employeeLogin", login: login, password: password })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        els.employeeLoginSubmit.disabled = false;
+        els.employeeLoginSubmit.textContent = "Войти";
+        if (res && res.ok) {
+          state.employee.token = res.token;
+          state.employee.role = res.role;
+          els.fEmpPassword.value = "";
+          showServiceScreen(els.employeeScreen);
+          loadPurchaseList();
+        } else {
+          employeeLoginErrorShow((res && res.error) || "Не удалось войти");
+        }
+      })
+      .catch(function (err) {
+        console.error(err);
+        els.employeeLoginSubmit.disabled = false;
+        els.employeeLoginSubmit.textContent = "Войти";
+        employeeLoginErrorShow("Ошибка соединения. Попробуйте ещё раз.");
+      });
+  });
+
+  els.employeeLogoutBtn.addEventListener("click", function () {
+    state.employee.token = null;
+    state.employee.role = null;
+    showServiceScreen(els.roleScreen);
+  });
+
+  els.employeeRefreshBtn.addEventListener("click", loadPurchaseList);
+
+  // ---- Закупка ----
+  // Список "к закупке" агрегирует ещё не обработанные строки заказов по
+  // товару (сумма количества по всем клиентам). После того как закупщик
+  // сохраняет закупку по товару, строка остаётся на экране со статусом
+  // "Закуплено" (не пропадает сразу из виду), но при следующем нажатии
+  // "Обновить" уже не появится в списке "к закупке" — она уходит в
+  // "Историю закупок" ниже (данные пишутся в лист "Закупки").
+
+  function loadPurchaseList() {
+    els.employeePendingList.innerHTML = '<div class="loading-state">Загружаем…</div>';
+    fetch(APPS_SCRIPT_URL + "?action=purchaseList&token=" + encodeURIComponent(state.employee.token))
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) {
+          els.employeePendingList.innerHTML = '<div class="empty-state">' + escapeHtml((res && res.error) || "Не удалось загрузить список") + '</div>';
+          els.employeeHistoryList.innerHTML = "";
+          return;
+        }
+        state.employee.pending = res.pending || [];
+        state.employee.history = res.history || [];
+        renderPurchaseList();
+        renderPurchaseHistory();
+      })
+      .catch(function (err) {
+        console.error(err);
+        els.employeePendingList.innerHTML = '<div class="empty-state">Ошибка соединения</div>';
+      });
+  }
+
+  function renderPurchaseList() {
+    var items = state.employee.pending;
+    if (!items.length) {
+      els.employeePendingList.innerHTML = '<div class="empty-state">Пока нечего закупать — новых заказов нет</div>';
+      return;
+    }
+
+    els.employeePendingList.innerHTML = items.map(function (item, idx) {
+      var unitLabel = item.unit || "шт.";
+      return (
+        '<div class="purchase-row" data-idx="' + idx + '">' +
+          '<div class="p-name">' + escapeHtml(item.product) + (item.article ? ' <span class="p-meta">арт. ' + escapeHtml(item.article) + '</span>' : '') + '</div>' +
+          '<div class="p-meta p-ordered">Заказано: ' + item.qty + ' ' + escapeHtml(unitLabel) + '</div>' +
+          '<div class="p-inputs">' +
+            '<div class="field"><label>Куплено (' + escapeHtml(unitLabel) + ')</label><input type="number" step="0.01" min="0" inputmode="decimal" class="p-qty"></div>' +
+            '<div class="field"><label>Цена за ед.</label><input type="number" step="0.01" min="0" inputmode="decimal" class="p-price"></div>' +
+          '</div>' +
+          '<button class="p-save" data-idx="' + idx + '">Сохранить закупку</button>' +
+          '<div class="purchase-error"></div>' +
+        '</div>'
+      );
+    }).join("");
+
+    els.employeePendingList.querySelectorAll(".p-save").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var row = btn.closest(".purchase-row");
+        var idx = parseInt(btn.getAttribute("data-idx"), 10);
+        var item = state.employee.pending[idx];
+        var qtyInput = row.querySelector(".p-qty");
+        var priceInput = row.querySelector(".p-price");
+        var errEl = row.querySelector(".purchase-error");
+        errEl.style.display = "none";
+
+        var qty = parseFloat(String(qtyInput.value).replace(",", "."));
+        var price = parseFloat(String(priceInput.value).replace(",", "."));
+
+        if (!(qty > 0)) {
+          errEl.textContent = "Укажите купленное количество";
+          errEl.style.display = "block";
+          return;
+        }
+        if (!(price > 0)) {
+          errEl.textContent = "Укажите цену за единицу";
+          errEl.style.display = "block";
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = "Сохраняем…";
+
+        fetch(APPS_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "submitPurchase",
+            token: state.employee.token,
+            product: item.product,
+            article: item.article,
+            unit: item.unit,
+            purchasedQty: qty,
+            unitPrice: price
+          })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (res && res.ok) {
+              row.querySelector(".p-inputs").style.display = "none";
+              btn.style.display = "none";
+              var status = document.createElement("div");
+              status.className = "purchase-status";
+              status.textContent = "✅ Закуплено: " + qty + " " + (item.unit || "шт.") + " по " + price + " за ед.";
+              row.appendChild(status);
+              if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+            } else {
+              btn.disabled = false;
+              btn.textContent = "Сохранить закупку";
+              errEl.textContent = (res && res.error) || "Не удалось сохранить";
+              errEl.style.display = "block";
+            }
+          })
+          .catch(function (err) {
+            console.error(err);
+            btn.disabled = false;
+            btn.textContent = "Сохранить закупку";
+            errEl.textContent = "Ошибка соединения";
+            errEl.style.display = "block";
+          });
+      });
+    });
+  }
+
+  function renderPurchaseHistory() {
+    var items = state.employee.history;
+    if (!items.length) {
+      els.employeeHistoryList.innerHTML = '<div class="empty-state">Закупок пока не было</div>';
+      return;
+    }
+    els.employeeHistoryList.innerHTML = items.map(function (h) {
+      var dateStr = h.date ? new Date(h.date).toLocaleString("ru-RU") : "";
+      return (
+        '<div class="history-row">' +
+          '<div class="h-name">' + escapeHtml(h.product) + (h.article ? ' (арт. ' + escapeHtml(h.article) + ')' : '') + '</div>' +
+          '<div>' + escapeHtml(dateStr) + ' — куплено ' + h.purchasedQty + ' ' + escapeHtml(h.unit || '') + ' по ' + h.unitPrice + ' за ед. (заказано ' + h.orderedQty + ')</div>' +
+        '</div>'
+      );
+    }).join("");
+  }
+
+  loadProducts();
+})();
+</script>
+</body>
+</html>
