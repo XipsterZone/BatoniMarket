@@ -1,1711 +1,1768 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Каталог товаров</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+<title>КРО — Проверка объекта</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  /*
-   * Фирменная палитра (Batoni), зафиксирована сознательно — НЕ привязана
-   * к var(--tg-theme-*), чтобы вид приложения не менялся от темы устройства
-   * конкретного пользователя (светлая/тёмная/кастомный акцент в Telegram).
-   * Основные:      #9E080F (красный), #231F20 (тёмный), #FFFFFF (белый)
-   * Дополнительные: #1D737E (бирюзовый), #F0CCA7 (персиковый)
-   */
-  :root {
-    --bg: #FFFFFF;
-    --secondary-bg: #FAEDE0;       /* мягкий персиковый оттенок для подложек/полей */
-    --text: #231F20;
-    --hint: rgba(35, 31, 32, 0.55);
-    --link: #1D737E;
-    --button: #9E080F;
-    --button-text: #FFFFFF;
-    --header-bg: #FFFFFF;
-    --section-bg: #FFFFFF;
-    --border: rgba(35, 31, 32, 0.10);
-  }
+/* Фирменная тема КРО — фиксированная для всех пользователей и НЕ зависит
+   от личной темы Telegram конкретного человека (света/тьмы/акцентного
+   цвета). Раньше значения брались из var(--tg-theme-*, ...) — тех самых
+   переменных, которые Telegram подставляет исходя из темы каждого
+   пользователя; теперь это просто константы. Чтобы поменять цвета —
+   меняйте значения именно здесь, больше нигде трогать не нужно. */
+:root{
+  --bg: #000000;
+  --secondary-bg: #1c1c1e;
+  --text: #ffffff;
+  --hint: #8e8e93;
+  --link: #8619fe;
+  --accent: #8619fe;
+  --accent-text: #ffffff;
+  --section-bg: #1c1c1e;
+  --header-bg: #000000;
+  --divider: rgba(255,255,255,0.12);
+  --danger: #ff453a;
+  --good: #34c759;
+  --card-title: #0a84ff;
+  --radius: 14px;
+}
 
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+*{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    padding-bottom: 90px;
-  }
+html{
+  width: 100%;
+  overflow-x: hidden;
+}
 
-  header.app-header {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background: var(--header-bg);
-    padding: 14px 16px 10px;
-    border-bottom: 1px solid var(--border);
-  }
+body{
+  margin:0; padding:0;
+  width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior: none; /* без "резинки" при перетягивании за края */
+  touch-action: pan-y; /* разрешён только вертикальный скролл жестом, горизонтальный — запрещён */
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
 
-  header.app-header h1 {
-    margin: 0 0 10px;
-    font-size: 20px;
-    font-weight: 700;
-  }
+/* Раньше здесь использовался position:fixed на html/body — из-за него в Telegram
+   на iOS интерфейс визуально съезжал вправо (WebView Telegram применяет
+   собственную трансформацию к странице, из-за чего fixed-позиционирование
+   считает размеры некорректно). Вместо этого просто запрещаем горизонтальный
+   скролл/перетягивание — тот же результат, без побочных эффектов. */
+#app{
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  padding-bottom: 24px;
+  box-sizing: border-box;
+}
 
-  .categories {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scrollbar-width: none;
-  }
-  .categories::-webkit-scrollbar { display: none; }
+.hidden{ display: none !important; }
 
-  .cat-pill {
-    flex: 0 0 auto;
-    padding: 8px 14px;
-    border-radius: 16px;
-    background: var(--secondary-bg);
-    color: var(--text);
-    font-size: 14px;
-    font-weight: 500;
-    border: none;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .cat-pill.active {
-    background: var(--button);
-    color: var(--button-text);
-  }
+.screen{ display: none; padding: 16px 16px 90px; animation: fadeIn .18s ease; }
+.screen.active{ display: block; }
 
-  main { padding: 14px 16px; }
+@keyframes fadeIn{ from{ opacity:0; transform: translateY(6px);} to{ opacity:1; transform: translateY(0);} }
 
-  .search-wrap {
-    position: relative;
-    margin-bottom: 10px;
-  }
-  .search-wrap input {
-    width: 100%;
-    padding: 10px 34px 10px 14px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    background: var(--secondary-bg);
-    color: var(--text);
-    font-size: 15px;
-    font-family: inherit;
-  }
-  .search-wrap input:focus {
-    outline: 2px solid var(--button);
-    outline-offset: -1px;
-  }
-  .search-clear {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    color: var(--hint);
-    font-size: 16px;
-    line-height: 1;
-    padding: 6px;
-    cursor: pointer;
-    display: none;
-  }
-  .search-clear.visible { display: block; }
+.muted{ color: var(--hint); }
 
-  .grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
+/* Progress bar */
+.progress-wrap{
+  position: sticky; top:0; z-index: 20;
+  background: var(--bg);
+  padding: 10px 16px 8px;
+  display:flex; align-items:center; gap:10px;
+  border-bottom: 1px solid var(--divider);
+}
+.progress-track{ flex:1; height:6px; background: var(--secondary-bg); border-radius: 4px; overflow:hidden; }
+.progress-fill{ height:100%; width:0%; background: var(--accent); transition: width .25s ease; }
+.progress-label{ font-size:12px; color: var(--hint); white-space:nowrap; min-width: 52px; text-align:right; }
 
-  .card {
-    background: var(--section-bg);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
+/* Start screen */
+.hero{ text-align:center; padding: 28px 8px 8px; }
+.hero-emoji{ font-size: 46px; line-height:1; margin-bottom: 8px; }
+.hero h1{ margin: 4px 0; font-size: 22px; }
 
-  .card-image {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    background: var(--secondary-bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-  .card-image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  .card-image .placeholder {
-    color: var(--hint);
-    font-size: 12px;
-    text-align: center;
-    padding: 8px;
-  }
+.type-cards{ display:flex; flex-direction:column; gap:12px; margin-top: 20px; }
+.type-card{
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  padding: 22px 16px; border-radius: var(--radius);
+  border: 1px solid var(--divider);
+  background: var(--section-bg);
+  cursor:pointer; font-family:inherit;
+  transition: transform .1s ease, box-shadow .15s ease;
+}
+.type-card:active{ transform: scale(0.98); }
+.type-emoji{ font-size: 34px; }
+.type-title{ font-size: 17px; font-weight: 600; margin-top: 4px; color: var(--card-title); }
+.type-sub{ font-size: 13px; color: var(--hint); }
 
-  .card-body {
-    padding: 8px 10px 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    flex: 1;
-  }
+.draft-banner{
+  margin-top: 18px; padding: 12px 14px; border-radius: 12px;
+  background: var(--secondary-bg);
+  display:flex; align-items:center; justify-content:space-between; gap: 10px;
+  font-size: 13px;
+}
+.link-btn{
+  background:none; border:none; color: var(--link); font-weight:600; font-size:13px; cursor:pointer; padding:0; font-family:inherit;
+}
 
-  .card-name {
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 1.25;
-  }
+/* Fields */
+.field{ margin-bottom: 16px; overflow: hidden; }
+.field label{ display:block; font-size: 13px; color: var(--hint); margin-bottom: 6px; font-weight: 500; }
+.field input[type=text], .field textarea, .field select{
+  width:100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--divider);
+  background: var(--section-bg); color: var(--text); font-size: 15px; font-family: inherit;
+}
+.field textarea{ resize: vertical; }
+.field select{
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><path fill='%238e8e93' d='M5.5 7.5l4.5 4.5 4.5-4.5z'/></svg>");
+  background-repeat: no-repeat; background-position: right 12px center; background-size: 18px;
+  padding-right: 36px;
+}
+.field select:invalid{ color: var(--hint); }
+.readonly-field .readonly-value{
+  padding: 12px 14px; border-radius: 12px; background: var(--secondary-bg); color: var(--text); font-size: 15px;
+}
 
-  .card-desc {
-    font-size: 12px;
-    color: var(--hint);
-    line-height: 1.3;
-    flex: 1;
-  }
+h2{ font-size: 18px; margin: 6px 0 16px; }
 
-  .card-article {
-    font-size: 11px;
-    color: var(--hint);
-    opacity: 0.8;
-  }
+/* Buttons */
+.primary-btn{
+  display:block; width:100%; padding: 14px; margin-top: 10px;
+  background: var(--accent); color: var(--accent-text); border:none; border-radius: 14px;
+  font-size: 16px; font-weight: 600; cursor:pointer; font-family: inherit;
+}
+.primary-btn:active{ opacity: .85; }
+.primary-btn:disabled{ opacity:.45; cursor:not-allowed; }
+.secondary-btn{
+  display:block; width:100%; padding: 13px; margin-top: 10px;
+  background: transparent; color: var(--link); border: 1px solid var(--divider); border-radius: 14px;
+  font-size: 15px; font-weight: 500; cursor:pointer; font-family: inherit;
+}
 
-  .qty-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 4px;
-  }
+/* Sections / accordion */
+.section-card{
+  background: var(--section-bg); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden;
+  border: 1px solid var(--divider);
+}
+.section-head{
+  display:flex; align-items:center; justify-content:space-between; padding: 14px 16px; cursor:pointer;
+}
+.section-head-title{ font-size: 15px; font-weight: 600; }
+.section-head-meta{ display:flex; align-items:center; gap: 8px; }
+.section-badge{
+  font-size: 12px; padding: 3px 8px; border-radius: 20px; background: var(--secondary-bg); color: var(--hint); font-weight:600;
+}
+.section-badge.done{ background: rgba(52,199,89,0.15); color: var(--good); }
+.chevron{ transition: transform .18s ease; color: var(--hint); font-size: 13px; }
+.section-card.open .chevron{ transform: rotate(180deg); }
+.section-body{ display:none; padding: 0 14px 14px; }
+.section-card.open .section-body{ display:block; }
 
-  .add-btn {
-    width: 100%;
-    padding: 7px 0;
-    border-radius: 10px;
-    border: none;
-    background: var(--secondary-bg);
-    color: var(--link);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-  }
+.item-row{ padding: 12px 0; border-top: 1px solid var(--divider); }
+.item-row:first-child{ border-top: none; }
+.item-text{ font-size: 14.5px; line-height: 1.35; margin-bottom: 10px; }
+.item-controls{ display:flex; align-items:center; justify-content:space-between; gap: 10px; flex-wrap: wrap; }
 
-  .stepper {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    background: var(--button);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .stepper button {
-    background: none;
-    border: none;
-    color: var(--button-text);
-    font-size: 16px;
-    font-weight: 700;
-    width: 32px;
-    height: 30px;
-    cursor: pointer;
-  }
-  .qty-mid {
-    display: flex;
-    align-items: baseline;
-    gap: 3px;
-    padding: 0 2px;
-  }
-  .qty-input {
-    width: 28px;
-    background: transparent;
-    border: none;
-    color: var(--button-text);
-    font-size: 14px;
-    font-weight: 700;
-    text-align: center;
-    font-family: inherit;
-    -moz-appearance: textfield;
-    padding: 0;
-  }
-  .qty-input.wide { width: 46px; }
-  .qty-input::-webkit-outer-spin-button,
-  .qty-input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-  .qty-input:focus { outline: none; }
-  .qty-unit {
-    color: var(--button-text);
-    font-size: 11px;
-    opacity: 0.85;
-  }
+.eval-toggle{
+  display:flex; align-items:center; gap:6px; font-size: 12.5px; color: var(--hint); cursor:pointer; user-select:none;
+}
+.switch{
+  width: 38px; height: 22px; border-radius: 20px; background: var(--secondary-bg); position:relative; transition: background .15s ease; flex-shrink:0;
+}
+.switch::after{
+  content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%;
+  background:#fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s ease;
+}
+.switch.on{ background: var(--good); }
+.switch.on::after{ transform: translateX(16px); }
 
-  .empty-state, .loading-state {
-    text-align: center;
-    color: var(--hint);
-    padding: 60px 20px;
-    font-size: 14px;
-  }
+.score-group{ display:flex; gap: 6px; }
+.score-btn{
+  width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--divider);
+  background: var(--section-bg); color: var(--text); font-size: 13px; font-weight:600; cursor:pointer; font-family: inherit;
+}
+.score-btn.selected{ background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.score-group.disabled .score-btn{ opacity: .35; pointer-events:none; }
 
-  /* Cart bar */
-  .cart-bar {
-    position: fixed;
-    left: 16px;
-    right: 16px;
-    bottom: 16px;
-    background: var(--button);
-    color: var(--button-text);
-    border-radius: 14px;
-    padding: 14px 18px;
-    display: none;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.18);
-  }
-  .cart-bar.visible { display: flex; }
+.note-badge{
+  font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 8px; padding: 1px 6px; margin-left: 6px; vertical-align: middle;
+}
 
-  /* Order screen */
-  .screen {
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    z-index: 20;
-    display: none;
-    flex-direction: column;
-  }
-  .screen.visible { display: flex; }
+.comment-toggle{
+  background:none; border:none; color: var(--hint); font-size: 18px; cursor:pointer; padding: 2px 4px; line-height:1;
+}
+.comment-toggle.active{ color: var(--accent); }
+.comment-box{ margin-top: 8px; display:none; }
+.comment-box.open{ display:block; }
+.comment-box textarea{
+  width:100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--divider);
+  background: var(--secondary-bg); color: var(--text); font-size: 13.5px; font-family: inherit; resize: vertical;
+}
 
-  .screen-header {
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: var(--header-bg);
-  }
-  .screen-header .back-btn {
-    background: none;
-    border: none;
-    color: var(--link);
-    font-size: 15px;
-    cursor: pointer;
-    padding: 0;
-  }
-  .screen-header h2 {
-    font-size: 17px;
-    margin: 0;
-  }
+.extra-comment-field{ margin-top: 8px; }
 
-  .screen-body {
-    padding: 16px;
-    overflow-y: auto;
-    flex: 1;
-  }
+/* Review screen */
+.summary-card{
+  background: var(--section-bg); border-radius: var(--radius); padding: 16px; border: 1px solid var(--divider); margin-bottom: 14px;
+}
+.summary-row{ display:flex; justify-content:space-between; padding: 7px 0; font-size: 14px; border-top: 1px solid var(--divider); }
+.summary-row:first-child{ border-top: none; }
+.summary-row .val{ font-weight: 600; }
+.summary-score{ font-size: 30px; font-weight: 700; text-align:center; margin: 4px 0 10px; }
+.warnings{ margin-bottom: 10px; }
+.warning-item{
+  font-size: 13px; color: #a15c00; background: rgba(255,159,10,0.15); border-radius: 10px; padding: 9px 12px; margin-bottom: 8px;
+}
 
-  .order-items {
-    background: var(--section-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 4px 12px;
-    margin-bottom: 20px;
-  }
-  .order-item-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 14px;
-    gap: 10px;
-  }
-  .order-item-row:last-child { border-bottom: none; }
-  .order-item-row .name { flex: 1; }
-  .order-item-row .stepper { width: auto; flex: 0 0 auto; }
+/* Overlay */
+.overlay{
+  position: fixed; inset:0; background: rgba(0,0,0,0.45); display:flex; flex-direction:column; align-items:center; justify-content:center; gap: 14px; color:#fff; z-index: 50;
+}
+.spinner{
+  width: 34px; height:34px; border-radius:50%; border: 3px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: spin .8s linear infinite;
+}
+@keyframes spin{ to{ transform: rotate(360deg); } }
 
-  .field {
-    margin-bottom: 14px;
-  }
-  .field label {
-    display: block;
-    font-size: 13px;
-    color: var(--hint);
-    margin-bottom: 6px;
-    font-weight: 500;
-  }
-  .field input, .field textarea {
-    width: 100%;
-    padding: 11px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    background: var(--secondary-bg);
-    color: var(--text);
-    font-size: 15px;
-    font-family: inherit;
-  }
-  .field input:focus, .field textarea:focus {
-    outline: 2px solid var(--button);
-    outline-offset: -1px;
-  }
+.error-toast{
+  position: fixed; left: 16px; right: 16px; bottom: 16px; background: var(--danger); color:#fff;
+  padding: 12px 14px; border-radius: 12px; font-size: 13.5px; z-index: 60; box-shadow: 0 4px 18px rgba(0,0,0,.25);
+}
 
-  .submit-btn {
-    width: 100%;
-    padding: 14px;
-    border-radius: 12px;
-    border: none;
-    background: var(--button);
-    color: var(--button-text);
-    font-size: 16px;
-    font-weight: 700;
-    cursor: pointer;
-    margin-top: 6px;
-  }
-  .submit-btn:disabled { opacity: 0.5; }
+/* Поля-триггеры даты/времени: обычный текстовый инпут (та же ширина, что у
+   остальных полей), но не редактируется вручную — только открывает попап. */
+.picker-trigger{ cursor: pointer; caret-color: transparent; }
+.field input.picker-trigger-date, .field input.picker-trigger-time{
+  background-repeat: no-repeat; background-position: right 14px center; background-size: 18px;
+  padding-right: 40px;
+}
+.picker-trigger-date{
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='1.8'><rect x='3' y='5' width='18' height='16' rx='3'/><path d='M3 9h18M8 3v4M16 3v4'/></svg>");
+}
+.picker-trigger-time{
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='1.8'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3.5 2'/></svg>");
+}
 
-  .hint-text {
-    font-size: 12px;
-    color: var(--hint);
-    margin: -8px 0 16px;
-  }
+/* Всплывающие попапы (bottom sheet) для даты и времени */
+.picker-overlay{
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 70;
+  display:flex; align-items:flex-end; justify-content:center;
+}
+.picker-overlay.hidden{ display:none; }
+.picker-sheet{
+  width: 100%; max-width: 480px; background: var(--section-bg); border-radius: 18px 18px 0 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  max-height: 82vh; overflow-y: auto; box-sizing: border-box;
+  animation: sheetUp .18s ease;
+}
+@keyframes sheetUp{ from{ transform: translateY(24px); opacity:0; } to{ transform: translateY(0); opacity:1; } }
+.picker-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px; }
+.picker-title{ font-size: 16px; font-weight: 700; }
+.picker-close{ background:none; border:none; font-size: 24px; line-height:1; color: var(--hint); cursor:pointer; padding: 4px 8px; }
 
-  /* Поле выбора даты + сам календарь (bottom-sheet) */
-  .date-input {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 11px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    background: var(--secondary-bg);
-    color: var(--text);
-    font-size: 15px;
-    font-family: inherit;
-    cursor: pointer;
-    text-align: left;
-  }
-  .date-input .date-placeholder { color: var(--hint); }
-  .date-input .date-icon { font-size: 15px; opacity: 0.8; }
+/* Календарь */
+.cal-nav{ display:flex; align-items:center; justify-content:space-between; margin: 6px 0 10px; }
+.cal-nav button{ background: var(--secondary-bg); border:none; width:34px; height:34px; border-radius:10px; font-size:18px; color: var(--accent); cursor:pointer; }
+.cal-nav button:disabled{ opacity:.3; cursor:not-allowed; }
+.cal-month-label{ font-weight:700; font-size:15px; text-transform: capitalize; }
+.cal-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size:12px; color:var(--hint); margin-bottom:4px; }
+.cal-days{ display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows: 42px; gap:2px; margin-bottom: 14px; }
+.cal-day{
+  border:none; border-radius:10px; background:transparent; font-size:14.5px; color:var(--text);
+  cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit;
+}
+.cal-day.other-month{ visibility:hidden; pointer-events:none; }
+.cal-day.disabled{ color: var(--hint); opacity:.35; cursor:not-allowed; }
+.cal-day.today{ box-shadow: inset 0 0 0 1.5px var(--accent); font-weight:700; }
+.cal-day.selected{ background: var(--accent); color: var(--accent-text); font-weight:700; }
 
-  .calendar-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(35, 31, 32, 0.45);
-    z-index: 50;
-    display: none;
-    align-items: flex-end;
-    justify-content: center;
-  }
-  .calendar-backdrop.visible { display: flex; }
+/* Колёсико выбора времени */
+.time-wheels{ position:relative; display:flex; align-items:center; justify-content:center; gap:10px; height:180px; margin: 10px 0 16px; }
+.time-wheel{
+  width: 72px; height: 180px; overflow-y: auto; scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.time-wheel::-webkit-scrollbar{ display:none; }
+.time-wheel-pad{ height: 72px; }
+.time-wheel-item{
+  height: 36px; display:flex; align-items:center; justify-content:center;
+  font-size: 18px; color: var(--hint); scroll-snap-align:center; cursor:pointer; font-variant-numeric: tabular-nums;
+}
+.time-wheel-item.center{ color: var(--text); font-weight:700; font-size: 21px; }
+.time-wheel-sep{ font-size: 20px; font-weight:700; color: var(--text); }
+.time-wheel-highlight{
+  position:absolute; top:50%; left:0; right:0; height:36px; transform: translateY(-50%);
+  border-top:1px solid var(--divider); border-bottom:1px solid var(--divider); pointer-events:none;
+}
 
-  .calendar-sheet {
-    width: 100%;
-    max-width: 480px;
-    background: var(--bg);
-    border-radius: 20px 20px 0 0;
-    padding: 16px 16px 26px;
-    max-height: 80vh;
-    overflow-y: auto;
-    box-shadow: 0 -8px 30px rgba(0,0,0,0.18);
-  }
-
-  .calendar-sheet-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-  }
-  .calendar-sheet-title { font-size: 16px; font-weight: 700; }
-  .calendar-close-btn {
-    background: none;
-    border: none;
-    font-size: 18px;
-    color: var(--hint);
-    cursor: pointer;
-    padding: 4px;
-    line-height: 1;
-  }
-
-  .cal-nav-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-  }
-  .cal-nav-btn {
-    background: var(--secondary-bg);
-    border: none;
-    width: 32px;
-    height: 32px;
-    border-radius: 9px;
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--text);
-    cursor: pointer;
-  }
-  .cal-nav-btn:disabled { opacity: 0.3; cursor: default; }
-  .cal-month-label {
-    font-size: 15px;
-    font-weight: 700;
-    text-transform: capitalize;
-  }
-
-  .cal-weekdays {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    text-align: center;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--hint);
-    margin-bottom: 6px;
-  }
-
-  .cal-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 4px;
-  }
-  .cal-day {
-    aspect-ratio: 1 / 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 10px;
-    border: none;
-    background: none;
-    color: var(--text);
-    font-size: 14px;
-    cursor: pointer;
-  }
-  .cal-day.empty { visibility: hidden; cursor: default; }
-  .cal-day.disabled { color: var(--hint); opacity: 0.35; cursor: not-allowed; }
-  .cal-day.today:not(.selected) { box-shadow: inset 0 0 0 1.5px var(--link); font-weight: 700; }
-  .cal-day.selected {
-    background: var(--button);
-    color: var(--button-text);
-    font-weight: 700;
-  }
-
-  .success-state {
-    text-align: center;
-    padding: 60px 24px;
-  }
-  .success-state .icon {
-    font-size: 48px;
-    margin-bottom: 16px;
-  }
-  .success-state h2 { margin: 0 0 8px; font-size: 18px; }
-  .success-state p { color: var(--hint); font-size: 14px; margin: 0 0 24px; }
-
-  /* Role select + employee screens */
-  .screen.role-screen,
-  #employeeLoginScreen,
-  #employeeScreen {
-    z-index: 30;
-  }
-
-  .role-screen-body {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: stretch;
-    gap: 14px;
-    height: 100%;
-    padding: 24px;
-  }
-  .role-logo-image {
-    display: block;
-    width: 96px;
-    height: 96px;
-    margin: 0 auto 14px;
-  }
-  .role-logo {
-    text-align: center;
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 40px;
-  }
-  .role-btn {
-    padding: 18px;
-    border-radius: 14px;
-    border: none;
-    font-size: 16px;
-    font-weight: 700;
-    cursor: pointer;
-  }
-  .role-btn-primary {
-    background: var(--button);
-    color: var(--button-text);
-  }
-  .role-btn-secondary {
-    background: var(--secondary-bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-  }
-
-  .header-top-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-  .employee-entry-link {
-    background: none;
-    border: none;
-    color: var(--hint);
-    font-size: 12px;
-    cursor: pointer;
-    padding: 4px;
-    white-space: nowrap;
-  }
-
-  .screen-header .refresh-btn {
-    margin-left: auto;
-    background: none;
-    border: none;
-    color: var(--link);
-    font-size: 13px;
-    cursor: pointer;
-    padding: 0;
-  }
-
-  .purchase-row {
-    background: var(--section-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px;
-    margin-bottom: 10px;
-  }
-  .purchase-row .p-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
-  .purchase-row .p-meta { font-size: 12px; color: var(--hint); }
-  .purchase-row .p-ordered { margin-bottom: 10px; }
-  .purchase-row .p-inputs { display: flex; gap: 8px; }
-  .purchase-row .p-inputs .field { flex: 1; margin-bottom: 0; }
-  .purchase-row .p-inputs input { padding: 9px 10px; font-size: 14px; }
-  .purchase-row .p-save {
-    margin-top: 10px;
-    width: 100%;
-    padding: 9px;
-    border-radius: 10px;
-    border: none;
-    background: var(--button);
-    color: var(--button-text);
-    font-weight: 600;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .purchase-row .p-save:disabled { opacity: 0.5; }
-  .purchase-status {
-    display: inline-block;
-    margin-top: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--link);
-  }
-  .purchase-error {
-    font-size: 12px;
-    color: var(--button);
-    margin-top: 6px;
-    display: none;
-  }
-
-  .history-row {
-    border-bottom: 1px solid var(--border);
-    padding: 8px 0;
-    font-size: 12px;
-    color: var(--hint);
-  }
-  .history-row .h-name { color: var(--text); font-weight: 600; font-size: 13px; }
 </style>
 </head>
 <body>
 
-<header class="app-header">
-  <div class="header-top-row">
-    <h1 id="storeName">Каталог товаров</h1>
-    <button class="employee-entry-link" id="employeeEntryLink" type="button">Вход для сотрудников</button>
+<div id="app">
+
+  <!-- Прогресс-бар (виден на экране чек-листа) -->
+  <div id="progress-wrap" class="progress-wrap hidden">
+    <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+    <div id="progress-label" class="progress-label">0 / 0</div>
   </div>
-  <div class="search-wrap">
-    <input type="text" id="searchInput" placeholder="Поиск по названию…" autocomplete="off" enterkeyhint="search">
-    <button class="search-clear" id="searchClear" type="button">✕</button>
-  </div>
-  <div class="categories" id="categories"></div>
-</header>
 
-<main id="catalog">
-  <div class="loading-state">Загружаем каталог…</div>
-</main>
-
-<div class="cart-bar" id="cartBar">
-  <span id="cartBarText">В заказе: 0</span>
-  <span>Оформить →</span>
-</div>
-
-<!-- Order screen -->
-<div class="screen" id="orderScreen">
-  <div class="screen-header">
-    <button class="back-btn" id="backBtn">‹ Назад</button>
-    <h2>Оформление заказа</h2>
-  </div>
-  <div class="screen-body" id="orderScreenBody">
-    <div class="order-items" id="orderItemsList"></div>
-
-    <div class="field">
-      <label for="fCompany">Название организации</label>
-      <input type="text" id="fCompany" placeholder="ООО «Ромашка»">
+  <!-- ЭКРАН 1: выбор типа объекта -->
+  <main id="screen-start" class="screen active">
+    <div class="hero">
+      <div class="hero-emoji">🕵️</div>
+      <h1>Проверка КРО</h1>
+      <p class="muted">Выберите тип объекта, который вы проверяете</p>
     </div>
-    <div class="field">
-      <label for="fAddress">Адрес доставки заказа</label>
-      <textarea id="fAddress" rows="2" placeholder="Город, улица, дом, офис"></textarea>
-    </div>
-    <div class="field">
-      <label for="fDateBtn">Дата, на которую делается заказ</label>
-      <button type="button" class="date-input" id="fDateBtn">
-        <span id="fDateLabel" class="date-placeholder">Выберите дату</span>
-        <span class="date-icon">📅</span>
+    <div class="type-cards">
+      <button class="type-card" data-type="restaurant">
+        <span class="type-emoji">🍽</span>
+        <span class="type-title">Ресторан</span>
+        <span class="type-sub">Полный чек-лист сервиса</span>
+      </button>
+      <button class="type-card" data-type="foodcourt">
+        <span class="type-emoji">🍔</span>
+        <span class="type-title">Фудкорт</span>
+        <span class="type-sub">Чек-лист кафе на фудкорте</span>
       </button>
     </div>
-    <div class="field">
-      <label for="fName">Имя заказчика</label>
-      <input type="text" id="fName" placeholder="Иван Иванов">
+    <div id="draft-banner" class="draft-banner hidden">
+      <span>У вас есть незавершённая проверка.</span>
+      <button id="draft-resume-btn" class="link-btn">Продолжить →</button>
     </div>
+  </main>
+
+  <!-- ЭКРАН 2: данные визита -->
+  <main id="screen-info" class="screen">
+    <h2 id="info-title">Данные визита</h2>
     <div class="field">
-      <label for="fPhone">Номер телефона заказчика</label>
-      <input type="tel" id="fPhone" placeholder="+7 900 000-00-00">
-    </div>
-    <div class="field">
-      <label for="fEmail">Почта заказчика</label>
-      <input type="email" id="fEmail" placeholder="name@example.com">
-    </div>
-
-    <button class="submit-btn" id="submitBtn">Отправить заказ</button>
-    <div id="formError" class="hint-text" style="color:var(--button); display:none;"></div>
-  </div>
-</div>
-
-<!-- Success screen -->
-<div class="screen" id="successScreen">
-  <div class="screen-body">
-    <div class="success-state">
-      <div class="icon">✅</div>
-      <h2>Заказ отправлен</h2>
-      <p>Мы получили ваш заказ и скоро свяжемся с вами.</p>
-      <button class="submit-btn" id="successCloseBtn">Готово</button>
-    </div>
-  </div>
-</div>
-
-<!-- Role select screen (первый экран при запуске) -->
-<div class="screen role-screen visible" id="roleScreen">
-  <div class="screen-body role-screen-body">
-    <img class="role-logo-image" src="data:image/png;base64,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IgQ/AAARIfgBAIgIwQ8AQEQIfgAAIkLwAwAQEYIfAICIEPwAAESE4AcAICIEPwAAESH4AQCICMEPAEBECH4AACJC8AMAEBGCHwCAiBD8AABEhOAHACAiBD8AABEh+AEAiAjBDwBARAh+AAAiQvADABARgh8AgIgQ/AAARITgBwAgIgQ/AAARIfgBAIgIwQ8AQEQIfgAAIkLwAwAQEYIfAICIEPwAAESE4AcAICIEPwAAESH4AQCICMEPAEBECH4AACJC8AMAEBGCHwCAiBD8AABEhOAHACAiBD8AABEh+AEAiAjBDwBARAh+AAAiQvADABARgh8AgIgQ/AAARITgBwAgIgQ/AAARIfgBAIgIwQ8AQEQIfgAAIkLwAwAQEYIfAICIEPwAAESE4AcAICIEPwAAESH4AQCICMEPAEBECH4AACJC8AMAEBGCHwCAiBD8AABEhOAHACAiBD8AABEh+AEAiAjBDwBARAh+AAAiQvADABARgh8AgIgQ/AAARITgBwAgIgQ/AAARIfgBAIgIwQ8AQEQIfgAAIkLwAwAQEYIfAICIEPwAAESE4AcAICIEPwAAESH4AQCICMEPAEBECH4AACJC8AMAEBGCHwCAiBD8AABEhOAHACAiBD8AABEh+AEAiAjBDwBARAh+AAAi8v8+vZbB9ycfYgAAAABJRU5ErkJggg==" alt="Батони Маркет">
-    <div class="role-logo" id="roleLogo">Батони Маркет</div>
-    <button class="role-btn role-btn-primary" id="btnRoleClient">Я — клиент</button>
-    <button class="role-btn role-btn-secondary" id="btnRoleEmployee">Я — сотрудник</button>
-  </div>
-</div>
-
-<!-- Employee login screen -->
-<div class="screen" id="employeeLoginScreen">
-  <div class="screen-header">
-    <button class="back-btn" id="employeeLoginBack">‹ Назад</button>
-    <h2>Вход для сотрудников</h2>
-  </div>
-  <div class="screen-body">
-    <div class="field">
-      <label for="fEmpLogin">Логин</label>
-      <input type="text" id="fEmpLogin" autocomplete="off">
+      <label>Дата визита</label>
+      <input type="text" class="picker-trigger picker-trigger-date" readonly inputmode="none" autocomplete="off" placeholder="ДД.ММ.ГГГГ" id="f-date" />
     </div>
     <div class="field">
-      <label for="fEmpPassword">Пароль</label>
-      <input type="password" id="fEmpPassword" autocomplete="off">
+      <label>Время визита</label>
+      <input type="text" class="picker-trigger picker-trigger-time" readonly inputmode="none" autocomplete="off" placeholder="ЧЧ:ММ" id="f-time" />
     </div>
-    <button class="submit-btn" id="employeeLoginSubmit">Войти</button>
-    <div id="employeeLoginError" class="hint-text" style="color:var(--button); display:none;"></div>
-  </div>
-</div>
-
-<!-- Employee purchasing screen ("Закупка") -->
-<div class="screen" id="employeeScreen">
-  <div class="screen-header">
-    <button class="back-btn" id="employeeLogoutBtn">‹ Выйти</button>
-    <h2>Закупка</h2>
-    <button class="refresh-btn" id="employeeRefreshBtn">Обновить ↻</button>
-  </div>
-  <div class="screen-body">
-    <div class="hint-text" style="margin-top:0;">Товары, заказанные клиентами и ещё не закупленные. Введите фактически купленное количество и цену за единицу.</div>
-    <div id="employeePendingList"></div>
-
-    <h2 style="font-size:15px; margin:24px 0 10px;">История закупок</h2>
-    <div id="employeeHistoryList"></div>
-  </div>
-</div>
-
-<!-- Календарь выбора даты заказа -->
-<div class="calendar-backdrop" id="calendarBackdrop">
-  <div class="calendar-sheet">
-    <div class="calendar-sheet-header">
-      <div class="calendar-sheet-title">Дата заказа</div>
-      <button type="button" class="calendar-close-btn" id="calendarCloseBtn">✕</button>
+    <div class="field">
+      <label id="f-object-label">Объект (название/адрес)</label>
+      <select id="f-object" required>
+        <option value="" disabled selected>— выберите объект —</option>
+      </select>
     </div>
-    <div class="cal-nav-row">
-      <button type="button" class="cal-nav-btn" id="calPrevBtn">‹</button>
-      <div class="cal-month-label" id="calMonthLabel"></div>
-      <button type="button" class="cal-nav-btn" id="calNextBtn">›</button>
+    <div class="field">
+      <label>Тайный гость (ID)</label>
+      <input type="text" id="f-guest-id" placeholder="Кодовое имя / ID проверяющего" />
     </div>
-    <div class="cal-weekdays" id="calWeekdays"></div>
-    <div class="cal-grid" id="calGrid"></div>
+    <div class="field readonly-field" id="f-tguser-wrap">
+      <label>Отправитель (Telegram)</label>
+      <div id="f-tguser" class="readonly-value">—</div>
+    </div>
+    <button id="info-next-btn" class="primary-btn">Начать проверку →</button>
+  </main>
+
+  <!-- ЭКРАН 3: чек-лист по секциям -->
+  <main id="screen-checklist" class="screen">
+    <div id="sections-container"></div>
+    <div class="field extra-comment-field">
+      <label>Дополнительные комментарии</label>
+      <textarea id="f-extra-comment" rows="4" placeholder="Свободный комментарий по визиту в целом"></textarea>
+    </div>
+    <button id="checklist-review-btn" class="primary-btn">К отправке →</button>
+  </main>
+
+  <!-- ЭКРАН 4: проверка перед отправкой -->
+  <main id="screen-review" class="screen">
+    <h2>Проверка перед отправкой</h2>
+    <div id="review-summary" class="summary-card"></div>
+    <div id="review-warnings" class="warnings"></div>
+    <button id="submit-btn" class="primary-btn">Отправить отчёт</button>
+    <button id="back-to-checklist-btn" class="secondary-btn">← Вернуться к чек-листу</button>
+  </main>
+
+  <!-- ЭКРАН 5: успех -->
+  <main id="screen-success" class="screen">
+    <div class="hero">
+      <div class="hero-emoji">✅</div>
+      <h1>Отчёт отправлен</h1>
+      <p class="muted" id="success-text">Результаты проверки отправлены в чат КРО и на почту.</p>
+    </div>
+    <button id="new-check-btn" class="primary-btn">Новая проверка</button>
+  </main>
+
+  <!-- Оверлей отправки -->
+  <div id="sending-overlay" class="overlay hidden">
+    <div class="spinner"></div>
+    <div>Отправляем отчёт…</div>
   </div>
+
+  <!-- Тост ошибки -->
+  <div id="error-toast" class="error-toast hidden"></div>
+
+  <!-- Всплывающий календарь для даты визита -->
+  <div id="date-picker-overlay" class="picker-overlay hidden">
+    <div class="picker-sheet">
+      <div class="picker-header">
+        <div class="picker-title">Дата визита</div>
+        <button type="button" class="picker-close" id="date-picker-close">×</button>
+      </div>
+      <div class="cal-nav">
+        <button type="button" id="cal-prev">‹</button>
+        <div class="cal-month-label" id="cal-month-label"></div>
+        <button type="button" id="cal-next">›</button>
+      </div>
+      <div class="cal-weekdays">
+        <div>Пн</div><div>Вт</div><div>Ср</div><div>Чт</div><div>Пт</div><div>Сб</div><div>Вс</div>
+      </div>
+      <div class="cal-days" id="cal-days"></div>
+      <button type="button" class="secondary-btn" id="cal-today-btn">Сегодня</button>
+    </div>
+  </div>
+
+  <!-- Всплывающий выбор времени для времени визита -->
+  <div id="time-picker-overlay" class="picker-overlay hidden">
+    <div class="picker-sheet">
+      <div class="picker-header">
+        <div class="picker-title">Время визита</div>
+        <button type="button" class="picker-close" id="time-picker-close">×</button>
+      </div>
+      <div class="time-wheels">
+        <div class="time-wheel" id="wheel-hours"></div>
+        <div class="time-wheel-sep">:</div>
+        <div class="time-wheel" id="wheel-minutes"></div>
+        <div class="time-wheel-highlight"></div>
+      </div>
+      <button type="button" class="primary-btn" id="time-picker-confirm">Готово</button>
+    </div>
+  </div>
+
 </div>
 
 <script>
+// ====== НАСТРОЙКИ (заполните после деплоя Apps Script) ======
+var APPS_SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+var APP_TITLE = "Проверка КРО";
+// ==============================================================
+
+const CHECKLISTS = {
+  "restaurant": {
+    "id": "restaurant",
+    "title": "Ресторан",
+    "emoji": "🍽",
+    "docTitle": "Чек-лист проверки ресторана тайным гостем",
+    "objectLabel": "Ресторан / адрес",
+    "sections": [
+      {
+        "id": "r1",
+        "title": "1. Этика и коммуникация",
+        "items": [
+          {
+            "id": "r1-1",
+            "text": "Отсутствие нецензурной лексики"
+          },
+          {
+            "id": "r1-2",
+            "text": "Вежливое общение персонала между собой"
+          },
+          {
+            "id": "r1-3",
+            "text": "Вежливое общение персонала с тайным гостем"
+          },
+          {
+            "id": "r1-4",
+            "text": "Вежливое общение персонала с другими гостями"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "title": "2. Встреча и первые этапы обслуживания",
+        "items": [
+          {
+            "id": "r2-1",
+            "text": "Гостя встретили при входе в течение 30 сек (да/нет)"
+          },
+          {
+            "id": "r2-2",
+            "text": "Соблюден стандарт «первого визита» (NEW)"
+          },
+          {
+            "id": "r2-3",
+            "text": "Вынесен приветственный комплимент (NEW)"
+          },
+          {
+            "id": "r2-4",
+            "text": "Официант представился, назвав имя"
+          },
+          {
+            "id": "r2-5",
+            "text": "Официант улыбается и приветлив"
+          },
+          {
+            "id": "r2-6",
+            "text": "Администратор в зоне видимости, опрятен и ухожен, стильно одет"
+          }
+        ]
+      },
+      {
+        "id": "r3",
+        "title": "3. Скорость обслуживания (тайминг)",
+        "items": [
+          {
+            "id": "r3-1",
+            "text": "Время до встречи/приветствия",
+            "note": "мин"
+          },
+          {
+            "id": "r3-2",
+            "text": "Время до первого подхода официанта",
+            "note": "мин"
+          },
+          {
+            "id": "r3-3",
+            "text": "Время ожидания напитков (после принятия заказа)",
+            "note": "мин"
+          },
+          {
+            "id": "r3-4",
+            "text": "Время ожидания блюд (после принятия заказа)",
+            "note": "мин"
+          },
+          {
+            "id": "r3-5",
+            "text": "Время выноса расчета после запроса",
+            "note": "мин"
+          },
+          {
+            "id": "r3-6",
+            "text": "Время выноса сдачи после передачи наличных",
+            "note": "мин"
+          }
+        ]
+      },
+      {
+        "id": "r4",
+        "title": "4. Персонал: сервис и знание продукта",
+        "items": [
+          {
+            "id": "r4-1",
+            "text": "Один официант ведет от первого подхода до расчета"
+          },
+          {
+            "id": "r4-2",
+            "text": "Официант сообщил об акциях (по запросу)"
+          },
+          {
+            "id": "r4-3",
+            "text": "Официант подробно рассказал про озвученную акцию"
+          },
+          {
+            "id": "r4-4",
+            "text": "Знание состава/описания блюда или напитка (по запросу)"
+          },
+          {
+            "id": "r4-5",
+            "text": "Официант предложил дополнительное блюдо/напиток"
+          }
+        ]
+      },
+      {
+        "id": "r5",
+        "title": "5. Внешний вид персонала",
+        "items": [
+          {
+            "id": "r5-1",
+            "text": "Чистота и опрятность униформы (не потертая, не старая)"
+          },
+          {
+            "id": "r5-2",
+            "text": "Соблюдение стандарта внешнего вида (обувь, брюки, рубашка, фартук)"
+          },
+          {
+            "id": "r5-3",
+            "text": "Соблюдение стандарта макияжа (красная помада у официанток)"
+          },
+          {
+            "id": "r5-4",
+            "text": "Руки официанта чистые и опрятные (короткие ногти, нейтральный маникюр у официанток; аккуратно подстриженные ногти у официантов)"
+          },
+          {
+            "id": "r5-5",
+            "text": "У бармена соблюдены стандарты внешнего вида и есть лого на фартуке"
+          }
+        ]
+      },
+      {
+        "id": "r6",
+        "title": "6. Качество блюд и напитков",
+        "items": [
+          {
+            "id": "r6-1",
+            "text": "Вкус блюд/напитков"
+          },
+          {
+            "id": "r6-2",
+            "text": "Качество блюд/напитков"
+          },
+          {
+            "id": "r6-3",
+            "text": "Температура подачи"
+          },
+          {
+            "id": "r6-4",
+            "text": "У блюд и напитков нет вкуса испорченных/просроченных ингредиентов"
+          }
+        ]
+      },
+      {
+        "id": "r7",
+        "title": "7. Чистота зала и сервировка",
+        "items": [
+          {
+            "id": "r7-1",
+            "text": "Визуальная чистота: полы, ковры"
+          },
+          {
+            "id": "r7-2",
+            "text": "Визуальная чистота: мебель, столы, скатерти, жидкое стекло"
+          },
+          {
+            "id": "r7-3",
+            "text": "Визуальная чистота: элементы декора, плинтусы"
+          },
+          {
+            "id": "r7-4",
+            "text": "Чистота приборов, ручников, бокалов, посуды (без подтеков), менажей"
+          },
+          {
+            "id": "r7-5",
+            "text": "Отсутствие неработающих лампочек в зоне видимости"
+          },
+          {
+            "id": "r7-6",
+            "text": "Меню опрятное, без повреждений, без жирных следов и подтеков"
+          },
+          {
+            "id": "r7-7",
+            "text": "На столе достаточное количество салфеток красного или бордового цвета"
+          }
+        ]
+      },
+      {
+        "id": "r8",
+        "title": "8. Туалетные комнаты",
+        "items": [
+          {
+            "id": "r8-1",
+            "text": "Чистота раковин, унитаза, сантехники, зеркал, урны"
+          },
+          {
+            "id": "r8-2",
+            "text": "Чистота полов и стен"
+          },
+          {
+            "id": "r8-3",
+            "text": "Наличие мыла, крема для рук, туалетной бумаги, бумаги или ошибори для рук"
+          },
+          {
+            "id": "r8-4",
+            "text": "Наличие актуального бланка уборки с подписями"
+          }
+        ]
+      },
+      {
+        "id": "r9",
+        "title": "9. Атмосфера и общий комфорт",
+        "items": [
+          {
+            "id": "r9-1",
+            "text": "Комфортный уровень громкости музыки"
+          },
+          {
+            "id": "r9-2",
+            "text": "Разговоры кухни не слышны в зале"
+          },
+          {
+            "id": "r9-3",
+            "text": "На кухне отсутствуют повара без головного убора"
+          },
+          {
+            "id": "r9-4",
+            "text": "Не проводятся работы, отвлекающие гостей от посещения, в том числе поставки в ресторан"
+          },
+          {
+            "id": "r9-5",
+            "text": "Температура в зале комфортная"
+          },
+          {
+            "id": "r9-6",
+            "text": "Общий комфорт помещения (общая оценка)"
+          }
+        ]
+      },
+      {
+        "id": "r10",
+        "title": "10. Кассовая дисциплина",
+        "items": [
+          {
+            "id": "r10-1",
+            "text": "Соблюдение регламента «чек-намерение» до 19:00"
+          },
+          {
+            "id": "r10-2",
+            "text": "Выданный чек есть в системе РК (проверка после посещения)"
+          },
+          {
+            "id": "r10-3",
+            "text": "Официант не отказывал в выбранном способе оплаты"
+          },
+          {
+            "id": "r10-4",
+            "text": "Время в чеке соответствует фактическому"
+          }
+        ]
+      },
+      {
+        "id": "r11",
+        "title": "11. Программа лояльности",
+        "items": [
+          {
+            "id": "r11-1",
+            "text": "Предложена регистрация в программе лояльности / списание бонусов при расчете"
+          }
+        ]
+      }
+    ]
+  },
+  "foodcourt": {
+    "id": "foodcourt",
+    "title": "Фудкорт",
+    "emoji": "🍔",
+    "docTitle": "Чек-лист проверки тайным гостем кафе (фудкорт)",
+    "objectLabel": "Название кафе",
+    "sections": [
+      {
+        "id": "f1",
+        "title": "1. Внешний вид и форма персонала",
+        "items": [
+          {
+            "id": "f1-1",
+            "text": "Сотрудник одет в форменную одежду, опрятен"
+          },
+          {
+            "id": "f1-2",
+            "text": "Руки сотрудника чистые и опрятные (короткие ногти, нейтральный маникюр у сотрудниц; аккуратно подстриженные ногти у сотрудников)"
+          },
+          {
+            "id": "f1-3",
+            "text": "Отсутствие небритости у мужчин / аккуратно подстриженная борода"
+          },
+          {
+            "id": "f1-4",
+            "text": "У женщин легкий макияж, волосы собраны (не распущены)"
+          },
+          {
+            "id": "f1-5",
+            "text": "Все повара в зоне видимости в униформе, головных уборах и перчатках"
+          }
+        ]
+      },
+      {
+        "id": "f2",
+        "title": "2. Витрина и выкладка продукции",
+        "items": [
+          {
+            "id": "f2-1",
+            "text": "Витрина чистая, без разводов, загрязнений и крошек. Углы витрины чистые"
+          },
+          {
+            "id": "f2-2",
+            "text": "Продукция выложена аккуратно, презентабельно"
+          },
+          {
+            "id": "f2-3",
+            "text": "Есть ценники на все позиции, цены совпадают с меню/кассой"
+          },
+          {
+            "id": "f2-4",
+            "text": "Продукция выглядит свежей (нет заветренных/подсохших продуктов)"
+          },
+          {
+            "id": "f2-5",
+            "text": "Использованы подставки/таблички с названием блюд"
+          },
+          {
+            "id": "f2-6",
+            "text": "Витрина достаточно наполнена, не кажется пустой"
+          }
+        ]
+      },
+      {
+        "id": "f3",
+        "title": "3. Скорость и качество обслуживания",
+        "items": [
+          {
+            "id": "f3-1",
+            "text": "Время ожидания в очереди до кассы",
+            "note": "мин"
+          },
+          {
+            "id": "f3-2",
+            "text": "Сотрудник поприветствовал гостя"
+          },
+          {
+            "id": "f3-3",
+            "text": "Сотрудник предложил помощь с выбором / рассказал о составе блюда (при запросе)"
+          },
+          {
+            "id": "f3-4",
+            "text": "Сотрудник рассказал про акции (по запросу)"
+          },
+          {
+            "id": "f3-5",
+            "text": "Время от заказа до получения первого блюда/напитка",
+            "note": "мин"
+          },
+          {
+            "id": "f3-6",
+            "text": "Время от заказа до получения последнего блюда/напитка",
+            "note": "мин"
+          },
+          {
+            "id": "f3-7",
+            "text": "Заказ собран верно, ничего не перепутано"
+          },
+          {
+            "id": "f3-8",
+            "text": "Сотрудник был вежлив и приветлив на всех этапах обслуживания"
+          }
+        ]
+      },
+      {
+        "id": "f4",
+        "title": "4. Знание меню и допродажи",
+        "items": [
+          {
+            "id": "f4-1",
+            "text": "Сотрудник смог ответить на вопросы о составе/аллергенах (при запросе)"
+          },
+          {
+            "id": "f4-2",
+            "text": "Было предложено дополнение к заказу (напиток, соус, десерт и т.д.)"
+          },
+          {
+            "id": "f4-3",
+            "text": "Сотрудник владеет информацией об акциях/специальных предложениях (при запросе)"
+          }
+        ]
+      },
+      {
+        "id": "f5",
+        "title": "5. Работа с кассой и чеком",
+        "items": [
+          {
+            "id": "f5-1",
+            "text": "Чек выдан без напоминания"
+          },
+          {
+            "id": "f5-2",
+            "text": "Сумма в чеке совпадает с озвученной"
+          },
+          {
+            "id": "f5-3",
+            "text": "Сотрудник спросил какой будет способ оплаты"
+          },
+          {
+            "id": "f5-4",
+            "text": "Сотрудник не отказал в выбранном способе оплаты"
+          },
+          {
+            "id": "f5-5",
+            "text": "Сдача выдана корректно (если оплата наличными)"
+          },
+          {
+            "id": "f5-6",
+            "text": "Выданный чек есть в системе РК (проверка в течение дня)"
+          },
+          {
+            "id": "f5-7",
+            "text": "Имя кассира озвученное при приветствии совпадает с именем в чеке"
+          },
+          {
+            "id": "f5-8",
+            "text": "Время пробития чека совпадает с фактическим"
+          }
+        ]
+      },
+      {
+        "id": "f6",
+        "title": "6. Качество блюда/напитка",
+        "items": [
+          {
+            "id": "f6-1",
+            "text": "Вкус блюд/напитков"
+          },
+          {
+            "id": "f6-2",
+            "text": "Качество и внешний вид блюд/напитков"
+          },
+          {
+            "id": "f6-3",
+            "text": "Температура подачи"
+          },
+          {
+            "id": "f6-4",
+            "text": "У блюд и напитков нет вкуса испорченных/просроченных ингредиентов"
+          }
+        ]
+      },
+      {
+        "id": "f7",
+        "title": "7. Упаковка на вынос",
+        "items": [
+          {
+            "id": "f7-1",
+            "text": "Упаковка чистая, целая, без повреждений"
+          },
+          {
+            "id": "f7-2",
+            "text": "Упаковка удобна для переноски"
+          },
+          {
+            "id": "f7-3",
+            "text": "Приборы/салфетки предложены при заказе на вынос"
+          }
+        ]
+      },
+      {
+        "id": "f8",
+        "title": "8. Санитарное состояние рабочей зоны",
+        "items": [
+          {
+            "id": "f8-1",
+            "text": "Прилавок и рабочая поверхность чистые"
+          },
+          {
+            "id": "f8-2",
+            "text": "Инвентарь (щипцы, лопатки и т.д.) выглядит чистым"
+          },
+          {
+            "id": "f8-3",
+            "text": "В зоне видимости нет переполненных урн. Урны выглядят чистыми"
+          },
+          {
+            "id": "f8-4",
+            "text": "Отсутствуют посторонние запахи от продукции/оборудования"
+          },
+          {
+            "id": "f8-5",
+            "text": "Выданный пейджер чистый, без значительных повреждений"
+          },
+          {
+            "id": "f8-6",
+            "text": "Выданный поднос чистый, сухой"
+          },
+          {
+            "id": "f8-7",
+            "text": "Терминал для оплаты чистый"
+          },
+          {
+            "id": "f8-8",
+            "text": "Кассовые мониторы чистые и исправны"
+          },
+          {
+            "id": "f8-9",
+            "text": "Мониторы с меню чистые, не заляпанные"
+          }
+        ]
+      },
+      {
+        "id": "f9",
+        "title": "9. Этика и коммуникация",
+        "items": [
+          {
+            "id": "f9-1",
+            "text": "Отсутствие нецензурной лексики"
+          },
+          {
+            "id": "f9-2",
+            "text": "Вежливое общение персонала с гостями"
+          }
+        ]
+      }
+    ]
+  }
+};
+
+// Список объектов сети для выпадающего списка на экране «Данные визита».
+// Чтобы добавить/убрать объект — просто отредактируйте нужный массив ниже.
+const OBJECT_OPTIONS = {
+  restaurant: [
+    "100 Хинкали",
+    "«Батони» м. Смоленская",
+    "«Батони» м. Киевская",
+    "«Батони» м. Фрунзенская",
+    "«Батони» м. Профсоюзная",
+    "«Батони» м. Ул. 1905 года",
+    "«Батони» м. Технопарк",
+  ],
+  foodcourt: [
+    "«Батони» м. Саларьево",
+    "«Батони» м. Свиблово",
+    "«Батони» м. Щукинская",
+    "«Батони» м. Калужская",
+  ],
+};
+
+
+/* КРО мини-апп — логика фронтенда */
 (function () {
   "use strict";
 
-  // ======= НАСТРОЙКИ =======
-  // Вставьте сюда URL вашего Google Apps Script Web App (после деплоя).
-  // Пример: "https://script.google.com/macros/s/AKfycb.../exec"
-  var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyANBYnB7jdAl3nVy9GhryawsQzFZUdTkUe9vmNXLq7ItfKmFKgdEZLlJoqN9HHWkABSQ/exec";
-  var STORE_NAME = "Батони Маркет";
-  // ==========================
-
-  document.getElementById("storeName").textContent = STORE_NAME;
-  document.getElementById("roleLogo").textContent = STORE_NAME;
-
-  var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+  const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
   if (tg) {
     tg.ready();
     tg.expand();
-    // Фиксируем цвет системной шапки/фона Telegram под фирменный стиль —
-    // независимо от темы, выбранной у пользователя. Обёрнуто в try/catch,
-    // так как метод поддерживается не всеми версиями клиента Telegram.
-    try { tg.setHeaderColor("#ffffff"); } catch (e) {}
-    try { tg.setBackgroundColor("#ffffff"); } catch (e) {}
+    // Фиксируем фирменные цвета и для "родного" оформления Telegram вокруг
+    // мини-аппа (шапка/статус-бар, нижняя область) — не только для нашего
+    // HTML. В старых клиентах этих методов может не быть — оборачиваем
+    // в try/catch, чтобы не ломать остальной запуск приложения.
+    try { tg.setHeaderColor("#000000"); } catch (e) {}
+    try { tg.setBackgroundColor("#000000"); } catch (e) {}
+    try { tg.setBottomBarColor("#000000"); } catch (e) {}
+    // На Android клиент Telegram по умолчанию перехватывает вертикальные
+    // свайпы по мини-аппу для сворачивания/закрытия — из-за этого страница
+    // может не прокручиваться вниз (жест "съедает" сам Telegram, а не наш
+    // скролл). Явно отключаем этот перехват, чтобы скролл списка чек-листа
+    // работал как обычная страница.
+    try { tg.disableVerticalSwipes(); } catch (e) {}
   }
 
-  // Демо-данные — показываются, если Apps Script ещё не подключён,
-  // чтобы можно было сразу увидеть, как выглядит приложение.
-  var DEMO_PRODUCTS = [
-    {
-      category: "Напитки",
-      items: [
-        { id: "demo1", name: "Кофе в зёрнах, 1 кг", description: "Арабика, средняя обжарка", imageUrl: "", article: "КОФ-001", unit: "кг" },
-        { id: "demo2", name: "Чай чёрный листовой", description: "Цейлонский, 250 г", imageUrl: "", article: "ЧАЙ-014", unit: "уп" },
-        { id: "demo3", name: "Какао-порошок", description: "Натуральный, 200 г", imageUrl: "", article: "КАК-002", unit: "уп" }
-      ]
-    },
-    {
-      category: "Посуда",
-      items: [
-        { id: "demo4", name: "Керамическая кружка", description: "Объём 350 мл", imageUrl: "", article: "ПОС-101", unit: "шт" },
-        { id: "demo5", name: "Стеклянный стакан", description: "Набор из 2 шт.", imageUrl: "", article: "ПОС-102", unit: "компл" }
-      ]
-    },
-    {
-      category: "Аксессуары",
-      items: [
-        { id: "demo6", name: "Тканевая салфетка", description: "Хлопок, набор 4 шт.", imageUrl: "", article: "АКС-201", unit: "уп" },
-        { id: "demo7", name: "Деревянная подставка", description: "Под горячее", imageUrl: "", article: "АКС-202", unit: "шт" }
-      ]
-    }
-  ];
+  // ---------- Состояние ----------
+  let state = null;
+  let currentScreen = "start";
+  let openSectionId = null;
 
-  var state = {
-    categories: [],   // [{category, items:[{id,name,description,imageUrl}]}]
-    cart: {},         // id -> {name, qty}
-    activeCategory: null,
-    searchQuery: "",
-    demoMode: false,
-    orderDate: null, // выбранная дата заказа, формат "YYYY-MM-DD"
-    employee: {
-      token: null,
-      role: null,
-      pending: [],
-      history: []
-    }
+  const els = {
+    progressWrap: document.getElementById("progress-wrap"),
+    progressFill: document.getElementById("progress-fill"),
+    progressLabel: document.getElementById("progress-label"),
+    draftBanner: document.getElementById("draft-banner"),
+    draftResumeBtn: document.getElementById("draft-resume-btn"),
+    infoTitle: document.getElementById("info-title"),
+    fDate: document.getElementById("f-date"),
+    fTime: document.getElementById("f-time"),
+    fObjectLabel: document.getElementById("f-object-label"),
+    fObject: document.getElementById("f-object"),
+    fGuestId: document.getElementById("f-guest-id"),
+    fTgUser: document.getElementById("f-tguser"),
+    infoNextBtn: document.getElementById("info-next-btn"),
+    sectionsContainer: document.getElementById("sections-container"),
+    fExtraComment: document.getElementById("f-extra-comment"),
+    checklistReviewBtn: document.getElementById("checklist-review-btn"),
+    reviewSummary: document.getElementById("review-summary"),
+    reviewWarnings: document.getElementById("review-warnings"),
+    submitBtn: document.getElementById("submit-btn"),
+    backToChecklistBtn: document.getElementById("back-to-checklist-btn"),
+    successText: document.getElementById("success-text"),
+    newCheckBtn: document.getElementById("new-check-btn"),
+    sendingOverlay: document.getElementById("sending-overlay"),
+    errorToast: document.getElementById("error-toast"),
   };
 
-  var els = {
-    categories: document.getElementById("categories"),
-    catalog: document.getElementById("catalog"),
-    searchInput: document.getElementById("searchInput"),
-    searchClear: document.getElementById("searchClear"),
-    cartBar: document.getElementById("cartBar"),
-    cartBarText: document.getElementById("cartBarText"),
-    orderScreen: document.getElementById("orderScreen"),
-    successScreen: document.getElementById("successScreen"),
-    orderItemsList: document.getElementById("orderItemsList"),
-    backBtn: document.getElementById("backBtn"),
-    submitBtn: document.getElementById("submitBtn"),
-    formError: document.getElementById("formError"),
-    successCloseBtn: document.getElementById("successCloseBtn"),
+  function draftKey(type) {
+    return "kro-draft-" + type;
+  }
 
-    roleScreen: document.getElementById("roleScreen"),
-    btnRoleClient: document.getElementById("btnRoleClient"),
-    btnRoleEmployee: document.getElementById("btnRoleEmployee"),
-    employeeEntryLink: document.getElementById("employeeEntryLink"),
+  function todayISO() {
+    // Локальная дата устройства (а не UTC — toISOString() мог сместить дату
+    // на соседние сутки поздним вечером/ночью из-за разницы с UTC).
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
 
-    employeeLoginScreen: document.getElementById("employeeLoginScreen"),
-    employeeLoginBack: document.getElementById("employeeLoginBack"),
-    employeeLoginSubmit: document.getElementById("employeeLoginSubmit"),
-    employeeLoginError: document.getElementById("employeeLoginError"),
-    fEmpLogin: document.getElementById("fEmpLogin"),
-    fEmpPassword: document.getElementById("fEmpPassword"),
+  function nowHHMM() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
 
-    employeeScreen: document.getElementById("employeeScreen"),
-    employeeLogoutBtn: document.getElementById("employeeLogoutBtn"),
-    employeeRefreshBtn: document.getElementById("employeeRefreshBtn"),
-    employeePendingList: document.getElementById("employeePendingList"),
-    employeeHistoryList: document.getElementById("employeeHistoryList"),
+  // ---- Дата/время: поля-триггеры + всплывающие попапы (календарь / колёсико времени) ----
+  // Нативные <input type=date/time> в некоторых WebView (в т.ч. Telegram на iOS) имеют
+  // свой внутренний минимальный размер, который нельзя надёжно подогнать под ширину
+  // остальных полей через CSS. Поэтому визуально это обычные текстовые поля (той же
+  // ширины, что и остальные), а по тапу открывается свой попап с выбором.
 
-    fDateBtn: document.getElementById("fDateBtn"),
-    fDateLabel: document.getElementById("fDateLabel"),
-    calendarBackdrop: document.getElementById("calendarBackdrop"),
-    calendarCloseBtn: document.getElementById("calendarCloseBtn"),
-    calPrevBtn: document.getElementById("calPrevBtn"),
-    calNextBtn: document.getElementById("calNextBtn"),
-    calMonthLabel: document.getElementById("calMonthLabel"),
-    calWeekdays: document.getElementById("calWeekdays"),
-    calGrid: document.getElementById("calGrid")
+  function isoDateToDisplay(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+    return m ? m[3] + "." + m[2] + "." + m[1] : "";
+  }
+
+  function displayDateToIso(display) {
+    const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec((display || "").trim());
+    if (!m) return null;
+    const day = Number(m[1]), month = Number(m[2]), year = Number(m[3]);
+    if (month < 1 || month > 12) return null;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    if (day < 1 || day > daysInMonth) return null;
+    return year + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+  }
+
+  function isValidTimeDisplay(display) {
+    const m = /^(\d{2}):(\d{2})$/.exec((display || "").trim());
+    if (!m) return false;
+    const h = Number(m[1]), mi = Number(m[2]);
+    return h >= 0 && h <= 23 && mi >= 0 && mi <= 59;
+  }
+
+  const MONTH_NAMES = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+
+  function todayParts() {
+    const d = new Date();
+    return { y: d.getFullYear(), m: d.getMonth(), day: d.getDate() };
+  }
+
+  // ---- Календарь (попап даты) ----
+  const calEls = {
+    overlay: document.getElementById("date-picker-overlay"),
+    monthLabel: document.getElementById("cal-month-label"),
+    days: document.getElementById("cal-days"),
+    prevBtn: document.getElementById("cal-prev"),
+    nextBtn: document.getElementById("cal-next"),
+    closeBtn: document.getElementById("date-picker-close"),
+    todayBtn: document.getElementById("cal-today-btn"),
   };
+  let calView = todayParts(); // { y, m, day: <не используется здесь> } — текущий отображаемый месяц
+  let calSelectedIso = null;
+
+  function renderCalendar() {
+    const t = todayParts();
+    calEls.monthLabel.textContent = MONTH_NAMES[calView.m] + " " + calView.y;
+
+    const isCurrentMonth = calView.y === t.y && calView.m === t.m;
+    calEls.nextBtn.disabled = isCurrentMonth;
+
+    // День недели первого числа месяца, приведённый к неделе Пн(0)..Вс(6)
+    const firstDow = (new Date(calView.y, calView.m, 1).getDay() + 6) % 7;
+    const daysInMonth = new Date(calView.y, calView.m + 1, 0).getDate();
+
+    let html = "";
+    for (let i = 0; i < firstDow; i++) html += '<div class="cal-day other-month"></div>';
+    for (let day = 1; day <= daysInMonth; day++) {
+      const iso = calView.y + "-" + String(calView.m + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+      const isFuture = calView.y > t.y || (calView.y === t.y && (calView.m > t.m || (calView.m === t.m && day > t.day)));
+      const isToday = calView.y === t.y && calView.m === t.m && day === t.day;
+      const isSelected = iso === calSelectedIso;
+      const cls = ["cal-day"];
+      if (isFuture) cls.push("disabled");
+      if (isToday) cls.push("today");
+      if (isSelected) cls.push("selected");
+      html += '<button type="button" class="' + cls.join(" ") + '" data-iso="' + iso + '"' + (isFuture ? " disabled" : "") + ">" + day + "</button>";
+    }
+    calEls.days.innerHTML = html;
+
+    calEls.days.querySelectorAll(".cal-day:not(.disabled):not(.other-month)").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        calSelectedIso = btn.dataset.iso;
+        els.fDate.value = isoDateToDisplay(calSelectedIso);
+        closeDatePicker();
+      });
+    });
+  }
+
+  function openDatePicker() {
+    const currentIso = displayDateToIso(els.fDate.value) || todayISO();
+    calSelectedIso = currentIso;
+    const [y, m] = currentIso.split("-").map(Number);
+    calView = { y, m: m - 1 };
+    renderCalendar();
+    calEls.overlay.classList.remove("hidden");
+  }
+
+  function closeDatePicker() {
+    calEls.overlay.classList.add("hidden");
+  }
+
+  calEls.prevBtn.addEventListener("click", () => {
+    calView.m--;
+    if (calView.m < 0) { calView.m = 11; calView.y--; }
+    renderCalendar();
+  });
+  calEls.nextBtn.addEventListener("click", () => {
+    if (calEls.nextBtn.disabled) return;
+    calView.m++;
+    if (calView.m > 11) { calView.m = 0; calView.y++; }
+    renderCalendar();
+  });
+  calEls.closeBtn.addEventListener("click", closeDatePicker);
+  calEls.overlay.addEventListener("click", (e) => { if (e.target === calEls.overlay) closeDatePicker(); });
+  calEls.todayBtn.addEventListener("click", () => {
+    const t = todayParts();
+    calView = { y: t.y, m: t.m };
+    calSelectedIso = todayISO();
+    els.fDate.value = isoDateToDisplay(calSelectedIso);
+    closeDatePicker();
+  });
+  els.fDate.addEventListener("click", openDatePicker);
+
+  // ---- Колёсико времени (попап времени) ----
+  const timeEls = {
+    overlay: document.getElementById("time-picker-overlay"),
+    hoursCol: document.getElementById("wheel-hours"),
+    minutesCol: document.getElementById("wheel-minutes"),
+    closeBtn: document.getElementById("time-picker-close"),
+    confirmBtn: document.getElementById("time-picker-confirm"),
+  };
+  const WHEEL_ITEM_H = 36;
+  let wheelHours = null;
+  let wheelMinutes = null;
+
+  function buildWheel(container, values) {
+    container.innerHTML =
+      '<div class="time-wheel-pad"></div>' +
+      values.map((v) => '<div class="time-wheel-item" data-value="' + v + '">' + v + "</div>").join("") +
+      '<div class="time-wheel-pad"></div>';
+
+    function currentIndex() {
+      const idx = Math.round(container.scrollTop / WHEEL_ITEM_H);
+      return Math.max(0, Math.min(values.length - 1, idx));
+    }
+    function highlightCenter() {
+      const idx = currentIndex();
+      container.querySelectorAll(".time-wheel-item").forEach((el, i) => el.classList.toggle("center", i === idx));
+    }
+    function scrollToIndex(idx, smooth) {
+      container.scrollTo({ top: idx * WHEEL_ITEM_H, behavior: smooth ? "smooth" : "auto" });
+    }
+
+    let scrollTimeout;
+    container.addEventListener("scroll", () => {
+      highlightCenter();
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => scrollToIndex(currentIndex(), true), 100);
+    });
+
+    container.querySelectorAll(".time-wheel-item").forEach((el, i) => {
+      el.addEventListener("click", () => {
+        scrollToIndex(i, true);
+        setTimeout(highlightCenter, 200);
+      });
+    });
+
+    return {
+      set: (value) => { scrollToIndex(Math.max(0, values.indexOf(value)), false); highlightCenter(); },
+      get: () => values[currentIndex()],
+    };
+  }
+
+  function openTimePicker() {
+    const m = /^(\d{2}):(\d{2})$/.exec(els.fTime.value) || [null, nowHHMM().slice(0, 2), nowHHMM().slice(3, 5)];
+    const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+    const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
+    wheelHours = buildWheel(timeEls.hoursCol, hours);
+    wheelMinutes = buildWheel(timeEls.minutesCol, minutes);
+    timeEls.overlay.classList.remove("hidden");
+    // scrollTo работает только когда контейнер уже видим/имеет размеры
+    requestAnimationFrame(() => {
+      wheelHours.set(m[1]);
+      wheelMinutes.set(m[2]);
+    });
+  }
+
+  function closeTimePicker() {
+    timeEls.overlay.classList.add("hidden");
+  }
+
+  timeEls.closeBtn.addEventListener("click", closeTimePicker);
+  timeEls.overlay.addEventListener("click", (e) => { if (e.target === timeEls.overlay) closeTimePicker(); });
+  timeEls.confirmBtn.addEventListener("click", () => {
+    if (wheelHours && wheelMinutes) {
+      els.fTime.value = wheelHours.get() + ":" + wheelMinutes.get();
+    }
+    closeTimePicker();
+  });
+  els.fTime.addEventListener("click", openTimePicker);
+
+  function newState(type) {
+    const def = CHECKLISTS[type];
+    const answers = {};
+    def.sections.forEach((sec) => {
+      sec.items.forEach((item) => {
+        answers[item.id] = { evaluated: true, score: null, comment: "" };
+      });
+    });
+    return {
+      type,
+      date: todayISO(),
+      time: nowHHMM(),
+      object: "",
+      guestId: "",
+      answers,
+      extraComment: "",
+    };
+  }
+
+  function totalItems() {
+    return CHECKLISTS[state.type].sections.reduce((n, s) => n + s.items.length, 0);
+  }
+
+  function filledCount() {
+    let n = 0;
+    Object.values(state.answers).forEach((a) => {
+      if (!a.evaluated || a.score !== null) n++;
+    });
+    return n;
+  }
+
+  // ---------- Экраны ----------
+  function showScreen(name) {
+    currentScreen = name;
+    document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
+    document.getElementById("screen-" + name).classList.add("active");
+    els.progressWrap.classList.toggle("hidden", name !== "checklist");
+    updateBackButton();
+    window.scrollTo(0, 0);
+  }
+
+  function updateBackButton() {
+    if (!tg) return;
+    if (currentScreen === "start") {
+      tg.BackButton.hide();
+    } else {
+      tg.BackButton.show();
+    }
+  }
+
+  function goBack() {
+    if (currentScreen === "info") showScreen("start");
+    else if (currentScreen === "checklist") showScreen("info");
+    else if (currentScreen === "review") showScreen("checklist");
+    else if (currentScreen === "success") showScreen("start");
+  }
+
+  // ---------- Экран 1: старт ----------
+  function checkDrafts() {
+    let found = null;
+    ["restaurant", "foodcourt"].forEach((t) => {
+      if (!found && localStorage.getItem(draftKey(t))) found = t;
+    });
+    if (found) {
+      els.draftBanner.classList.remove("hidden");
+      els.draftResumeBtn.onclick = () => resumeDraft(found);
+    } else {
+      els.draftBanner.classList.add("hidden");
+    }
+  }
+
+  function resumeDraft(type) {
+    try {
+      const raw = localStorage.getItem(draftKey(type));
+      state = JSON.parse(raw);
+      openInfoScreen();
+    } catch (e) {
+      startNewCheck(type);
+    }
+  }
+
+  function startNewCheck(type) {
+    state = newState(type);
+    // подставим имя пользователя Telegram, если доступно
+    openInfoScreen();
+  }
+
+  function populateObjectOptions(type, selected) {
+    const options = OBJECT_OPTIONS[type] || [];
+    els.fObject.innerHTML =
+      '<option value="" disabled' + (selected ? "" : " selected") + ">— выберите объект —</option>" +
+      options
+        .map((name) => '<option value="' + escapeHtml(name) + '"' + (name === selected ? " selected" : "") + ">" + escapeHtml(name) + "</option>")
+        .join("");
+  }
+
+  function openInfoScreen() {
+    const def = CHECKLISTS[state.type];
+    els.infoTitle.textContent = "Данные визита — " + def.emoji + " " + def.title;
+    els.fObjectLabel.textContent = def.objectLabel;
+    els.fDate.value = isoDateToDisplay(state.date);
+    els.fTime.value = state.time;
+    populateObjectOptions(state.type, state.object);
+    els.fGuestId.value = state.guestId;
+
+    const tgUser = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+    if (tgUser) {
+      const name = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ");
+      els.fTgUser.textContent = (name || "—") + (tgUser.username ? " (@" + tgUser.username + ")" : "");
+    } else {
+      els.fTgUser.textContent = "не определено (открыто вне Telegram)";
+    }
+
+    showScreen("info");
+  }
+
+  document.querySelectorAll(".type-card").forEach((btn) => {
+    btn.addEventListener("click", () => startNewCheck(btn.dataset.type));
+  });
+
+  els.infoNextBtn.addEventListener("click", () => {
+    const isoDate = displayDateToIso(els.fDate.value);
+    if (!isoDate) {
+      shake(els.fDate);
+      showError("Введите корректную дату в формате ДД.ММ.ГГГГ");
+      return;
+    }
+    if (!isValidTimeDisplay(els.fTime.value)) {
+      shake(els.fTime);
+      showError("Введите корректное время в формате ЧЧ:ММ");
+      return;
+    }
+    state.date = isoDate;
+    state.time = els.fTime.value.trim();
+    state.object = els.fObject.value.trim();
+    state.guestId = els.fGuestId.value.trim();
+    if (!state.object) {
+      shake(els.fObject);
+      showError("Выберите объект проверки из списка");
+      return;
+    }
+    saveDraft();
+    renderChecklist();
+    showScreen("checklist");
+  });
+
+  // ---------- Экран 3: чек-лист ----------
+  function renderChecklist() {
+    const def = CHECKLISTS[state.type];
+    els.sectionsContainer.innerHTML = "";
+    def.sections.forEach((sec, idx) => {
+      const card = document.createElement("div");
+      card.className = "section-card";
+      card.dataset.sectionId = sec.id;
+      if (openSectionId === sec.id || (openSectionId === null && idx === 0)) {
+        card.classList.add("open");
+        openSectionId = sec.id;
+      }
+
+      const head = document.createElement("div");
+      head.className = "section-head";
+      head.innerHTML =
+        '<div class="section-head-title">' + escapeHtml(sec.title) + "</div>" +
+        '<div class="section-head-meta"><span class="section-badge" data-badge="' + sec.id + '"></span><span class="chevron">▾</span></div>';
+      head.addEventListener("click", () => toggleSection(sec.id));
+
+      const body = document.createElement("div");
+      body.className = "section-body";
+      sec.items.forEach((item) => body.appendChild(renderItemRow(item)));
+
+      card.appendChild(head);
+      card.appendChild(body);
+      els.sectionsContainer.appendChild(card);
+      updateSectionBadge(sec);
+    });
+    els.fExtraComment.value = state.extraComment || "";
+    updateProgress();
+  }
+
+  function toggleSection(id) {
+    document.querySelectorAll(".section-card").forEach((c) => {
+      if (c.dataset.sectionId === id) {
+        c.classList.toggle("open");
+        openSectionId = c.classList.contains("open") ? id : null;
+      } else {
+        c.classList.remove("open");
+      }
+    });
+  }
+
+  function renderItemRow(item) {
+    const row = document.createElement("div");
+    row.className = "item-row";
+    row.dataset.itemId = item.id;
+    const a = state.answers[item.id];
+
+    const noteBadge = item.note ? '<span class="note-badge">' + escapeHtml(item.note) + "</span>" : "";
+
+    row.innerHTML =
+      '<div class="item-text">' + escapeHtml(item.text) + noteBadge + "</div>" +
+      '<div class="item-controls">' +
+        '<div class="eval-toggle" data-role="eval-toggle"><span class="switch ' + (a.evaluated ? "on" : "") + '" data-role="switch"></span><span>Оценивался</span></div>' +
+        '<div class="score-group ' + (a.evaluated ? "" : "disabled") + '" data-role="score-group">' +
+          [1, 2, 3, 4, 5].map((n) =>
+            '<button type="button" class="score-btn ' + (a.score === n ? "selected" : "") + '" data-score="' + n + '">' + n + "</button>"
+          ).join("") +
+        "</div>" +
+        '<button type="button" class="comment-toggle ' + (a.comment ? "active" : "") + '" data-role="comment-toggle">💬</button>' +
+      "</div>" +
+      '<div class="comment-box ' + (a.comment ? "open" : "") + '" data-role="comment-box">' +
+        '<textarea rows="2" placeholder="' + (item.note ? "Например: 3 " + item.note : "Комментарий (опционально)") + '" data-role="comment-input">' + escapeHtml(a.comment || "") + "</textarea>" +
+      "</div>";
+
+    // события
+    row.querySelector('[data-role="eval-toggle"]').addEventListener("click", () => {
+      a.evaluated = !a.evaluated;
+      const sw = row.querySelector('[data-role="switch"]');
+      sw.classList.toggle("on", a.evaluated);
+      row.querySelector('[data-role="score-group"]').classList.toggle("disabled", !a.evaluated);
+      if (!a.evaluated) a.score = null;
+      refreshAfterChange(item.id);
+    });
+
+    row.querySelectorAll(".score-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (!a.evaluated) return;
+        const val = Number(btn.dataset.score);
+        a.score = a.score === val ? null : val;
+        row.querySelectorAll(".score-btn").forEach((b) => b.classList.toggle("selected", Number(b.dataset.score) === a.score));
+        refreshAfterChange(item.id);
+      });
+    });
+
+    row.querySelector('[data-role="comment-toggle"]').addEventListener("click", (e) => {
+      const box = row.querySelector('[data-role="comment-box"]');
+      box.classList.toggle("open");
+      e.currentTarget.classList.toggle("active", box.classList.contains("open"));
+    });
+
+    row.querySelector('[data-role="comment-input"]').addEventListener("input", (e) => {
+      a.comment = e.target.value;
+      row.querySelector('[data-role="comment-toggle"]').classList.toggle("active", !!a.comment);
+      saveDraft();
+    });
+
+    return row;
+  }
+
+  function refreshAfterChange(itemId) {
+    updateProgress();
+    saveDraft();
+    const sec = CHECKLISTS[state.type].sections.find((s) => s.items.some((i) => i.id === itemId));
+    if (sec) updateSectionBadge(sec);
+  }
+
+  function updateSectionBadge(sec) {
+    const el = document.querySelector('[data-badge="' + sec.id + '"]');
+    if (!el) return;
+    const total = sec.items.length;
+    const done = sec.items.filter((i) => {
+      const a = state.answers[i.id];
+      return !a.evaluated || a.score !== null;
+    }).length;
+    el.textContent = done + "/" + total;
+    el.classList.toggle("done", done === total);
+  }
+
+  function updateProgress() {
+    const total = totalItems();
+    const done = filledCount();
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    els.progressFill.style.width = pct + "%";
+    els.progressLabel.textContent = done + " / " + total;
+  }
+
+  els.fExtraComment.addEventListener("input", (e) => {
+    state.extraComment = e.target.value;
+    saveDraft();
+  });
+
+  els.checklistReviewBtn.addEventListener("click", () => {
+    renderReview();
+    showScreen("review");
+  });
+
+  // ---------- Экран 4: проверка перед отправкой ----------
+  function computeStats() {
+    const def = CHECKLISTS[state.type];
+    let evaluatedCount = 0, scoredSum = 0, scoredCount = 0, skipped = 0, unscored = 0;
+    def.sections.forEach((sec) => {
+      sec.items.forEach((item) => {
+        const a = state.answers[item.id];
+        if (!a.evaluated) { skipped++; return; }
+        evaluatedCount++;
+        if (a.score !== null) { scoredSum += a.score; scoredCount++; }
+        else unscored++;
+      });
+    });
+    const avg = scoredCount ? (scoredSum / scoredCount) : null;
+    return { evaluatedCount, scoredCount, skipped, unscored, avg, total: totalItems() };
+  }
+
+  function renderReview() {
+    const def = CHECKLISTS[state.type];
+    const stats = computeStats();
+    els.reviewSummary.innerHTML =
+      '<div class="summary-score">' + (stats.avg ? stats.avg.toFixed(2) : "—") + ' <span style="font-size:14px;color:var(--hint);font-weight:400;">средний балл</span></div>' +
+      '<div class="summary-row"><span>Тип объекта</span><span class="val">' + def.emoji + " " + def.title + "</span></div>" +
+      '<div class="summary-row"><span>Объект</span><span class="val">' + escapeHtml(state.object || "—") + "</span></div>" +
+      '<div class="summary-row"><span>Дата / время</span><span class="val">' + isoDateToDisplay(state.date) + " " + state.time + "</span></div>" +
+      '<div class="summary-row"><span>Тайный гость (ID)</span><span class="val">' + escapeHtml(state.guestId || "—") + "</span></div>" +
+      '<div class="summary-row"><span>Оценено критериев</span><span class="val">' + stats.scoredCount + " / " + stats.total + "</span></div>" +
+      '<div class="summary-row"><span>Не применялось</span><span class="val">' + stats.skipped + "</span></div>";
+
+    els.reviewWarnings.innerHTML = "";
+    if (stats.unscored > 0) {
+      const w = document.createElement("div");
+      w.className = "warning-item";
+      w.textContent = "⚠️ Есть " + stats.unscored + " критерия(ев) без оценки (но отмечены «оценивался»). Можно отправить как есть или вернуться и заполнить.";
+      els.reviewWarnings.appendChild(w);
+    }
+    if (!state.object) {
+      const w = document.createElement("div");
+      w.className = "warning-item";
+      w.textContent = "⚠️ Не указан объект проверки.";
+      els.reviewWarnings.appendChild(w);
+    }
+  }
+
+  els.backToChecklistBtn.addEventListener("click", () => {
+    renderChecklist();
+    showScreen("checklist");
+  });
+
+  // ---------- Отправка ----------
+  els.submitBtn.addEventListener("click", submitReport);
+
+  async function submitReport() {
+    els.submitBtn.disabled = true;
+    els.sendingOverlay.classList.remove("hidden");
+    try {
+      const payload = buildPayload();
+
+      if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") === 0) {
+        // Демо-режим: Apps Script ещё не подключен — просто показываем, как это будет выглядеть
+        await new Promise((r) => setTimeout(r, 700));
+        clearDraft(state.type);
+        els.successText.textContent = "Демо-режим: APPS_SCRIPT_URL ещё не настроен, поэтому отчёт никуда не отправлен. Настройте backend по инструкции SETUP.md.";
+        showScreen("success");
+        return;
+      }
+
+      // Без заголовка Content-Type: application/json, чтобы избежать CORS-preflight,
+      // который Apps Script Web App не обрабатывает. Content.gs сам парсит JSON из тела.
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data.ok) {
+        throw new Error(data.error || "Сервер вернул ошибку отправки");
+      }
+      clearDraft(state.type);
+      const parts = [];
+      if (data.telegram === true) parts.push("в чат КРО");
+      if (data.email === true) parts.push("на почту");
+      els.successText.textContent = parts.length
+        ? "Отчёт успешно отправлен: " + parts.join(" и ") + "."
+        : "Отчёт сохранён в таблице, но отправка уведомлений не подтверждена. Проверьте настройки Script Properties.";
+      showScreen("success");
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+    } catch (err) {
+      showError("Не удалось отправить отчёт: " + err.message);
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("error");
+    } finally {
+      els.submitBtn.disabled = false;
+      els.sendingOverlay.classList.add("hidden");
+    }
+  }
+
+  function buildPayload() {
+    const def = CHECKLISTS[state.type];
+    const sections = def.sections.map((sec) => ({
+      id: sec.id,
+      title: sec.title,
+      items: sec.items.map((item) => ({
+        id: item.id,
+        text: item.text,
+        note: item.note || null,
+        evaluated: state.answers[item.id].evaluated,
+        score: state.answers[item.id].score,
+        comment: state.answers[item.id].comment || "",
+      })),
+    }));
+    const stats = computeStats();
+    return {
+      type: state.type,
+      typeTitle: def.title,
+      docTitle: def.docTitle,
+      date: state.date,
+      time: state.time,
+      object: state.object,
+      guestId: state.guestId,
+      extraComment: state.extraComment || "",
+      sections,
+      stats,
+      tgUser: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || null,
+    };
+  }
+
+  // ---------- Черновик / вспомогательное ----------
+  function saveDraft() {
+    if (!state) return;
+    try {
+      localStorage.setItem(draftKey(state.type), JSON.stringify(state));
+    } catch (e) { /* ignore */ }
+  }
+
+  function clearDraft(type) {
+    localStorage.removeItem(draftKey(type));
+  }
+
+  function showError(msg) {
+    els.errorToast.textContent = msg;
+    els.errorToast.classList.remove("hidden");
+    setTimeout(() => els.errorToast.classList.add("hidden"), 4000);
+  }
+
+  function shake(el) {
+    el.style.borderColor = "var(--danger, #e53935)";
+    setTimeout(() => (el.style.borderColor = ""), 1200);
+  }
 
   function escapeHtml(str) {
-    return String(str == null ? "" : str)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   }
 
-  function totalCartCount() {
-    // Считаем число позиций в заказе, а не сумму количеств — при дробных
-    // весовых товарах (0.3 кг + 2 шт) сумма количеств не несёт смысла.
-    return Object.keys(state.cart).length;
+  els.newCheckBtn.addEventListener("click", () => {
+    openSectionId = null;
+    showScreen("start");
+    checkDrafts();
+  });
+
+  if (tg) {
+    tg.BackButton.onClick(goBack);
   }
 
-  function updateCartBar() {
-    var count = totalCartCount();
-    if (count > 0) {
-      els.cartBar.classList.add("visible");
-      els.cartBarText.textContent = "В заказе: " + count + (count === 1 ? " товар" : count < 5 ? " товара" : " товаров");
-    } else {
-      els.cartBar.classList.remove("visible");
-    }
-  }
-
-  function qtyLabel(qty, unit) {
-    return unit ? (qty + " " + unit) : String(qty);
-  }
-
-  // Единицы, которые считаются только целыми числами (штучный товар).
-  // Всё остальное (кг, литр и т.п.) можно заказывать дробно — 0.3, 1.6 и т.д.
-  var DISCRETE_UNITS = ["шт", "шт.", "уп", "компл", ""];
-
-  function isDiscreteUnit(unit) {
-    return DISCRETE_UNITS.indexOf(String(unit || "").trim().toLowerCase()) !== -1;
-  }
-
-  function qtyStep(unit) {
-    return isDiscreteUnit(unit) ? 1 : 0.1;
-  }
-
-  function roundQty(qty, unit) {
-    if (isDiscreteUnit(unit)) return Math.round(qty);
-    return Math.round(qty * 100) / 100; // до сотых, чтобы избежать 0.30000000000000004
-  }
-
-  function renderQtyInput(id, qty, unit) {
-    var discrete = isDiscreteUnit(unit);
-    var step = qtyStep(unit);
-    var widthClass = discrete ? "" : " wide";
-    var unitHtml = unit ? '<span class="qty-unit">' + escapeHtml(unit) + '</span>' : "";
-    return (
-      '<span class="qty-mid">' +
-        '<input class="qty-input' + widthClass + '" type="number" inputmode="' + (discrete ? "numeric" : "decimal") + '" ' +
-          'step="' + step + '" min="' + step + '" data-id="' + escapeHtml(id) + '" value="' + qty + '">' +
-        unitHtml +
-      '</span>'
-    );
-  }
-
-  function findItemById(id) {
-    for (var c = 0; c < state.categories.length; c++) {
-      var items = state.categories[c].items;
-      for (var i = 0; i < items.length; i++) {
-        if (items[i].id === id) return items[i];
+  // Клавиатура за собой не убирается на свайпе — если пользователь начал
+  // жест прокрутки (реальный палец по экрану, не программный скролл при
+  // фокусе), а в этот момент открыта клавиатура для комментария/поля —
+  // убираем фокус, клавиатура скрывается сама.
+  document.addEventListener(
+    "touchmove",
+    () => {
+      const active = document.activeElement;
+      if (active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT")) {
+        active.blur();
       }
-    }
-    return null;
+    },
+    { passive: true }
+  );
+
+  // ---------- Инициализация ----------
+  function init() {
+    checkDrafts();
+    showScreen("start");
   }
 
-  function setQty(id, qty) {
-    var item = findItemById(id);
-    if (!item) return;
-    qty = roundQty(qty, item.unit);
-    if (qty <= 0) {
-      delete state.cart[id];
-    } else {
-      state.cart[id] = { name: item.name, qty: qty, article: item.article || "", unit: item.unit || "" };
-    }
-    renderCatalog();
-    updateCartBar();
-    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
-  }
-
-  function cardTemplate(item) {
-    var qty = state.cart[item.id] ? state.cart[item.id].qty : 0;
-    var imageHtml = item.imageUrl
-      ? '<img src="' + escapeHtml(item.imageUrl) + '" alt="" loading="lazy">'
-      : '<div class="placeholder">Фото скоро будет</div>';
-
-    var controlHtml = qty > 0
-      ? '<div class="stepper">' +
-          '<button data-action="dec" data-id="' + escapeHtml(item.id) + '">−</button>' +
-          renderQtyInput(item.id, qty, item.unit) +
-          '<button data-action="inc" data-id="' + escapeHtml(item.id) + '">+</button>' +
-        '</div>'
-      : '<button class="add-btn" data-action="inc" data-id="' + escapeHtml(item.id) + '">Добавить в заказ</button>';
-
-    return (
-      '<div class="card">' +
-        '<div class="card-image">' + imageHtml + '</div>' +
-        '<div class="card-body">' +
-          '<div class="card-name">' + escapeHtml(item.name) + '</div>' +
-          (item.description ? '<div class="card-desc">' + escapeHtml(item.description) + '</div>' : '') +
-          (item.article ? '<div class="card-article">Арт. ' + escapeHtml(item.article) + '</div>' : '') +
-          '<div class="qty-row">' + controlHtml + '</div>' +
-        '</div>' +
-      '</div>'
-    );
-  }
-
-  function renderCategoryPills() {
-    var searching = state.searchQuery.trim().length > 0;
-    els.categories.innerHTML = state.categories.map(function (c) {
-      var active = (!searching && c.category === state.activeCategory) ? " active" : "";
-      return '<button class="cat-pill' + active + '" data-cat="' + escapeHtml(c.category) + '">' + escapeHtml(c.category) + '</button>';
-    }).join("");
-
-    els.categories.querySelectorAll(".cat-pill").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        state.activeCategory = btn.getAttribute("data-cat");
-        state.searchQuery = "";
-        els.searchInput.value = "";
-        els.searchClear.classList.remove("visible");
-        renderCategoryPills();
-        renderCatalog();
-      });
-    });
-  }
-
-  function getAllItems() {
-    var all = [];
-    state.categories.forEach(function (c) {
-      c.items.forEach(function (it) { all.push(it); });
-    });
-    return all;
-  }
-
-  // Общий обработчик для кнопок +/- и поля ручного ввода количества.
-  // Используется и в каталоге, и в экране оформления заказа.
-  function bindQtyControls(container, afterChange) {
-    container.querySelectorAll("[data-action]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var id = btn.getAttribute("data-id");
-        var action = btn.getAttribute("data-action");
-        var item = findItemById(id);
-        var step = qtyStep(item ? item.unit : "");
-        var current = state.cart[id] ? state.cart[id].qty : 0;
-        setQty(id, action === "inc" ? current + step : current - step);
-        if (afterChange) afterChange();
-      });
-    });
-    container.querySelectorAll(".qty-input").forEach(function (input) {
-      input.addEventListener("change", function () {
-        var id = input.getAttribute("data-id");
-        var parsed = parseFloat(String(input.value).replace(",", "."));
-        setQty(id, isNaN(parsed) ? 0 : parsed);
-        if (afterChange) afterChange();
-      });
-      input.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") input.blur();
-      });
-    });
-  }
-
-  function bindCardActions() {
-    bindQtyControls(els.catalog);
-  }
-
-  function renderCatalog() {
-    if (!state.categories.length) {
-      els.catalog.innerHTML = '<div class="empty-state">Каталог пока пуст</div>';
-      return;
-    }
-
-    var query = state.searchQuery.trim().toLowerCase();
-
-    if (query) {
-      var matches = getAllItems().filter(function (it) {
-        return it.name.toLowerCase().indexOf(query) !== -1;
-      });
-      els.catalog.innerHTML = matches.length
-        ? '<div class="grid">' + matches.map(cardTemplate).join("") + '</div>'
-        : '<div class="empty-state">Ничего не найдено по запросу «' + escapeHtml(state.searchQuery.trim()) + '»</div>';
-      bindCardActions();
-      return;
-    }
-
-    var current = state.categories.filter(function (c) { return c.category === state.activeCategory; })[0];
-    if (!current || !current.items.length) {
-      els.catalog.innerHTML = '<div class="empty-state">В этой категории пока нет товаров</div>';
-      return;
-    }
-
-    els.catalog.innerHTML = '<div class="grid">' + current.items.map(cardTemplate).join("") + '</div>';
-    bindCardActions();
-  }
-
-  function loadProducts() {
-    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") === 0) {
-      state.demoMode = true;
-      state.categories = DEMO_PRODUCTS;
-      state.activeCategory = DEMO_PRODUCTS[0] && DEMO_PRODUCTS[0].category;
-      renderCategoryPills();
-      renderCatalog();
-      return;
-    }
-
-    fetch(APPS_SCRIPT_URL + "?action=products")
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        state.categories = Array.isArray(data) ? data : [];
-        state.activeCategory = state.categories[0] && state.categories[0].category;
-        renderCategoryPills();
-        renderCatalog();
-      })
-      .catch(function (err) {
-        console.error(err);
-        state.demoMode = true;
-        state.categories = DEMO_PRODUCTS;
-        state.activeCategory = DEMO_PRODUCTS[0] && DEMO_PRODUCTS[0].category;
-        renderCategoryPills();
-        renderCatalog();
-      });
-  }
-
-  els.searchInput.addEventListener("input", function () {
-    state.searchQuery = els.searchInput.value;
-    els.searchClear.classList.toggle("visible", state.searchQuery.length > 0);
-    renderCategoryPills();
-    renderCatalog();
-  });
-
-  // На iOS нажатие Enter/"Найти" на клавиатуре само по себе не закрывает её —
-  // нужно явно убрать фокус с поля, тогда клавиатура скроется.
-  els.searchInput.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      els.searchInput.blur();
-    }
-  });
-
-  // На iOS (особенно во встроенном браузере Telegram) скролл страницы сам
-  // по себе не прячет открытую клавиатуру, если фокус остаётся в поле ввода —
-  // поэтому прячем её вручную при первом же движении скролла.
-  window.addEventListener("scroll", function () {
-    if (document.activeElement === els.searchInput) {
-      els.searchInput.blur();
-    }
-  }, { passive: true });
-
-  els.searchClear.addEventListener("click", function () {
-    state.searchQuery = "";
-    els.searchInput.value = "";
-    els.searchClear.classList.remove("visible");
-    renderCategoryPills();
-    renderCatalog();
-    els.searchInput.focus();
-  });
-
-  // ---- Order screen ----
-
-  function renderOrderItems() {
-    var ids = Object.keys(state.cart);
-    if (!ids.length) {
-      els.orderItemsList.innerHTML = '<div class="order-item-row"><span class="name">Корзина пуста</span></div>';
-      return;
-    }
-    els.orderItemsList.innerHTML = ids.map(function (id) {
-      var it = state.cart[id];
-      var label = it.name + (it.article ? " (арт. " + it.article + ")" : "");
-      return (
-        '<div class="order-item-row">' +
-          '<span class="name">' + escapeHtml(label) + '</span>' +
-          '<div class="stepper">' +
-            '<button data-action="dec" data-id="' + escapeHtml(id) + '">−</button>' +
-            renderQtyInput(id, it.qty, it.unit) +
-            '<button data-action="inc" data-id="' + escapeHtml(id) + '">+</button>' +
-          '</div>' +
-        '</div>'
-      );
-    }).join("");
-
-    bindQtyControls(els.orderItemsList, function () {
-      renderOrderItems();
-      if (totalCartCount() === 0) closeOrderScreen();
-    });
-  }
-
-  function openOrderScreen() {
-    renderOrderItems();
-    els.orderScreen.classList.add("visible");
-    if (tg && tg.BackButton) {
-      tg.BackButton.show();
-      tg.BackButton.onClick(closeOrderScreen);
-    }
-    if (tg && tg.MainButton) tg.MainButton.hide();
-  }
-
-  function closeOrderScreen() {
-    els.orderScreen.classList.remove("visible");
-    if (tg && tg.BackButton) tg.BackButton.hide();
-  }
-
-  els.cartBar.addEventListener("click", openOrderScreen);
-  els.backBtn.addEventListener("click", closeOrderScreen);
-
-  // ---- Календарь выбора даты заказа ----
-  // Доступны даты начиная с завтрашнего дня и на 2 недели вперёд (14 дней),
-  // без исключения каких-либо дней недели.
-
-  var MONTH_NAMES_NOM = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-  var MONTH_NAMES_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня",
-    "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-  var WEEKDAY_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-  var WEEKDAY_FULL = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
-
-  function pad2(n) { return n < 10 ? "0" + n : String(n); }
-  function isoDate(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
-  // Понедельник = 0 ... воскресенье = 6 (вместо стандартного Date#getDay(), где 0 = воскресенье)
-  function mondayFirstDay(d) { return (d.getDay() + 6) % 7; }
-
-  var calToday = new Date();
-  calToday.setHours(0, 0, 0, 0);
-  var calMinDate = new Date(calToday); calMinDate.setDate(calMinDate.getDate() + 1); // с завтра
-  var calMaxDate = new Date(calToday); calMaxDate.setDate(calMaxDate.getDate() + 14); // 2 недели вперёд
-
-  var calState = {
-    viewYear: calMinDate.getFullYear(),
-    viewMonth: calMinDate.getMonth() // 0-based
-  };
-
-  function renderCalendar() {
-    els.calWeekdays.innerHTML = WEEKDAY_SHORT.map(function (w) { return "<div>" + w + "</div>"; }).join("");
-    els.calMonthLabel.textContent = MONTH_NAMES_NOM[calState.viewMonth] + " " + calState.viewYear;
-
-    var firstOfMonth = new Date(calState.viewYear, calState.viewMonth, 1);
-    var daysInMonth = new Date(calState.viewYear, calState.viewMonth + 1, 0).getDate();
-    var leadingEmpty = mondayFirstDay(firstOfMonth);
-    var todayIso = isoDate(calToday);
-
-    var cells = [];
-    for (var e = 0; e < leadingEmpty; e++) {
-      cells.push('<span class="cal-day empty"></span>');
-    }
-    for (var day = 1; day <= daysInMonth; day++) {
-      var d = new Date(calState.viewYear, calState.viewMonth, day);
-      var iso = isoDate(d);
-      var disabled = d < calMinDate || d > calMaxDate;
-      var classes = "cal-day";
-      if (disabled) classes += " disabled";
-      if (iso === todayIso) classes += " today";
-      if (state.orderDate && iso === state.orderDate) classes += " selected";
-      cells.push(
-        '<button type="button" class="' + classes + '" data-iso="' + iso + '"' +
-          (disabled ? " disabled" : "") + '>' + day + '</button>'
-      );
-    }
-    els.calGrid.innerHTML = cells.join("");
-
-    els.calGrid.querySelectorAll(".cal-day:not(.disabled):not(.empty)").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        selectOrderDate(btn.getAttribute("data-iso"));
-      });
-    });
-
-    // Навигация не должна уходить за пределы разрешённого диапазона дат (calMinDate..calMaxDate)
-    var viewingMinMonth = calState.viewYear === calMinDate.getFullYear() && calState.viewMonth === calMinDate.getMonth();
-    var viewingMaxMonth = calState.viewYear === calMaxDate.getFullYear() && calState.viewMonth === calMaxDate.getMonth();
-    els.calPrevBtn.disabled = viewingMinMonth;
-    els.calNextBtn.disabled = viewingMaxMonth;
-  }
-
-  function selectOrderDate(iso) {
-    state.orderDate = iso;
-    var parts = iso.split("-").map(Number);
-    var d = new Date(parts[0], parts[1] - 1, parts[2]);
-    var label = d.getDate() + " " + MONTH_NAMES_GEN[d.getMonth()] + ", " + WEEKDAY_FULL[mondayFirstDay(d)];
-    els.fDateLabel.textContent = label;
-    els.fDateLabel.classList.remove("date-placeholder");
-    closeCalendar();
-    if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
-  }
-
-  function openCalendar() {
-    // Открываем на месяце уже выбранной даты, если она есть, иначе — на самой ранней доступной
-    if (state.orderDate) {
-      var parts = state.orderDate.split("-").map(Number);
-      calState.viewYear = parts[0];
-      calState.viewMonth = parts[1] - 1;
-    } else {
-      calState.viewYear = calMinDate.getFullYear();
-      calState.viewMonth = calMinDate.getMonth();
-    }
-    renderCalendar();
-    els.calendarBackdrop.classList.add("visible");
-  }
-
-  function closeCalendar() {
-    els.calendarBackdrop.classList.remove("visible");
-  }
-
-  els.fDateBtn.addEventListener("click", openCalendar);
-  els.calendarCloseBtn.addEventListener("click", closeCalendar);
-  els.calendarBackdrop.addEventListener("click", function (e) {
-    if (e.target === els.calendarBackdrop) closeCalendar(); // клик по тёмной подложке — закрыть
-  });
-  els.calPrevBtn.addEventListener("click", function () {
-    calState.viewMonth -= 1;
-    if (calState.viewMonth < 0) { calState.viewMonth = 11; calState.viewYear -= 1; }
-    renderCalendar();
-  });
-  els.calNextBtn.addEventListener("click", function () {
-    calState.viewMonth += 1;
-    if (calState.viewMonth > 11) { calState.viewMonth = 0; calState.viewYear += 1; }
-    renderCalendar();
-  });
-
-  function showFormError(msg) {
-    els.formError.textContent = msg;
-    els.formError.style.display = "block";
-  }
-  function clearFormError() {
-    els.formError.style.display = "none";
-  }
-
-  function collectFormData() {
-    return {
-      company: document.getElementById("fCompany").value.trim(),
-      address: document.getElementById("fAddress").value.trim(),
-      orderDate: state.orderDate || "",
-      customerName: document.getElementById("fName").value.trim(),
-      phone: document.getElementById("fPhone").value.trim(),
-      email: document.getElementById("fEmail").value.trim()
-    };
-  }
-
-  function validateForm(data) {
-    if (!data.company) return "Укажите название организации";
-    if (!data.address) return "Укажите адрес доставки";
-    if (!data.orderDate) return "Укажите дату, на которую делается заказ";
-    if (!data.customerName) return "Укажите имя заказчика";
-    if (!data.phone) return "Укажите номер телефона";
-    if (!data.email) return "Укажите email";
-    var emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email);
-    if (!emailOk) return "Проверьте формат email";
-    return null;
-  }
-
-  function submitOrder() {
-    clearFormError();
-    if (totalCartCount() === 0) {
-      showFormError("Добавьте хотя бы один товар в заказ");
-      return;
-    }
-    var formData = collectFormData();
-    var error = validateForm(formData);
-    if (error) {
-      showFormError(error);
-      return;
-    }
-
-    var items = Object.keys(state.cart).map(function (id) {
-      return {
-        id: id,
-        name: state.cart[id].name,
-        qty: state.cart[id].qty,
-        article: state.cart[id].article || "",
-        unit: state.cart[id].unit || ""
-      };
-    });
-
-    var tgUser = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : {};
-
-    var payload = {
-      company: formData.company,
-      address: formData.address,
-      orderDate: formData.orderDate,
-      customerName: formData.customerName,
-      phone: formData.phone,
-      email: formData.email,
-      items: items,
-      tgUserId: tgUser.id || "",
-      tgUsername: tgUser.username || ""
-    };
-
-    els.submitBtn.disabled = true;
-    els.submitBtn.textContent = "Отправляем…";
-
-    if (state.demoMode) {
-      // В демо-режиме (без подключённого Apps Script) просто показываем успех.
-      setTimeout(function () { onOrderSuccess(); }, 500);
-      return;
-    }
-
-    fetch(APPS_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" }, // избегаем CORS preflight
-      body: JSON.stringify(payload)
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (res) {
-        if (res && res.ok) {
-          onOrderSuccess();
-        } else {
-          throw new Error((res && res.error) || "Неизвестная ошибка");
-        }
-      })
-      .catch(function (err) {
-        console.error(err);
-        showFormError("Не удалось отправить заказ. Попробуйте ещё раз.");
-        els.submitBtn.disabled = false;
-        els.submitBtn.textContent = "Отправить заказ";
-      });
-  }
-
-  function onOrderSuccess() {
-    state.cart = {};
-    updateCartBar();
-    renderCatalog();
-    closeOrderScreen();
-    els.successScreen.classList.add("visible");
-    els.submitBtn.disabled = false;
-    els.submitBtn.textContent = "Отправить заказ";
-    ["fCompany", "fAddress", "fName", "fPhone", "fEmail"].forEach(function (id) {
-      document.getElementById(id).value = "";
-    });
-    state.orderDate = null;
-    els.fDateLabel.textContent = "Выберите дату";
-    els.fDateLabel.classList.add("date-placeholder");
-    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-  }
-
-  els.submitBtn.addEventListener("click", submitOrder);
-  els.successCloseBtn.addEventListener("click", function () {
-    els.successScreen.classList.remove("visible");
-  });
-
-  // ---- Роль: клиент / сотрудник ----
-  // Экран выбора роли перекрывает весь каталог до тех пор, пока не нажата
-  // одна из кнопок. "Я — клиент" просто открывает обычный каталог (без
-  // логина — доступ к каталогу как и раньше не ограничен отдельными
-  // учётками). "Я — сотрудник" ведёт на форму логина/пароля, проверка
-  // которых происходит на сервере (Code.gs) по листу "Доступ".
-
-  function showServiceScreen(el) {
-    [els.roleScreen, els.employeeLoginScreen, els.employeeScreen].forEach(function (s) {
-      s.classList.remove("visible");
-    });
-    if (el) el.classList.add("visible");
-  }
-
-  // Сессия сотрудника хранится в localStorage браузера (24 часа, как и на
-  // сервере), чтобы при повторном открытии мини-аппа в течение суток не
-  // приходилось заново вводить логин/пароль. Обёрнуто в try/catch — в редких
-  // случаях (приватный режим и т.п.) localStorage может быть недоступен,
-  // тогда просто будем спрашивать логин каждый раз, без падения приложения.
-  var EMPLOYEE_SESSION_KEY = "batoniEmployeeSession";
-
-  function saveEmployeeSession(token, role, expiresAt) {
-    try {
-      localStorage.setItem(EMPLOYEE_SESSION_KEY, JSON.stringify({ token: token, role: role, expiresAt: expiresAt }));
-    } catch (e) { /* localStorage недоступен — просто не сохраняем */ }
-  }
-
-  function loadEmployeeSession() {
-    try {
-      var raw = localStorage.getItem(EMPLOYEE_SESSION_KEY);
-      if (!raw) return null;
-      var session = JSON.parse(raw);
-      if (!session || !session.token || !session.expiresAt || session.expiresAt < Date.now()) {
-        localStorage.removeItem(EMPLOYEE_SESSION_KEY);
-        return null;
-      }
-      return session;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function clearEmployeeSession() {
-    try { localStorage.removeItem(EMPLOYEE_SESSION_KEY); } catch (e) { /* ignore */ }
-  }
-
-  function enterEmployeeSection() {
-    var saved = loadEmployeeSession();
-    if (saved) {
-      // Сессия ещё действует — сразу открываем «Закупку», минуя логин/пароль.
-      state.employee.token = saved.token;
-      state.employee.role = saved.role;
-      showServiceScreen(els.employeeScreen);
-      loadPurchaseList();
-    } else {
-      els.employeeLoginError.style.display = "none";
-      showServiceScreen(els.employeeLoginScreen);
-    }
-  }
-
-  els.btnRoleClient.addEventListener("click", function () {
-    showServiceScreen(null); // все служебные экраны скрыты — виден каталог
-  });
-
-  els.btnRoleEmployee.addEventListener("click", enterEmployeeSection);
-  els.employeeEntryLink.addEventListener("click", enterEmployeeSection);
-
-  els.employeeLoginBack.addEventListener("click", function () {
-    showServiceScreen(els.roleScreen);
-  });
-
-  function employeeLoginErrorShow(msg) {
-    els.employeeLoginError.textContent = msg;
-    els.employeeLoginError.style.display = "block";
-  }
-
-  els.employeeLoginSubmit.addEventListener("click", function () {
-    var login = els.fEmpLogin.value.trim();
-    var password = els.fEmpPassword.value;
-    els.employeeLoginError.style.display = "none";
-
-    if (!login || !password) {
-      employeeLoginErrorShow("Введите логин и пароль");
-      return;
-    }
-    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") === 0) {
-      employeeLoginErrorShow("Раздел для сотрудников недоступен в демо-режиме — сначала подключите Apps Script URL");
-      return;
-    }
-
-    els.employeeLoginSubmit.disabled = true;
-    els.employeeLoginSubmit.textContent = "Входим…";
-
-    fetch(APPS_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "employeeLogin", login: login, password: password })
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (res) {
-        els.employeeLoginSubmit.disabled = false;
-        els.employeeLoginSubmit.textContent = "Войти";
-        if (res && res.ok) {
-          state.employee.token = res.token;
-          state.employee.role = res.role;
-          saveEmployeeSession(res.token, res.role, res.expiresAt);
-          els.fEmpPassword.value = "";
-          showServiceScreen(els.employeeScreen);
-          loadPurchaseList();
-        } else {
-          employeeLoginErrorShow((res && res.error) || "Не удалось войти");
-        }
-      })
-      .catch(function (err) {
-        console.error(err);
-        els.employeeLoginSubmit.disabled = false;
-        els.employeeLoginSubmit.textContent = "Войти";
-        employeeLoginErrorShow("Ошибка соединения. Попробуйте ещё раз.");
-      });
-  });
-
-  els.employeeLogoutBtn.addEventListener("click", function () {
-    var tokenToRevoke = state.employee.token;
-    state.employee.token = null;
-    state.employee.role = null;
-    clearEmployeeSession();
-    showServiceScreen(els.roleScreen);
-
-    // Сообщаем серверу, что токен больше не нужен — не дожидаясь, пока он
-    // сам истечёт через сутки. Не блокирует UI и не критично, если не дойдёт.
-    if (tokenToRevoke && APPS_SCRIPT_URL && APPS_SCRIPT_URL.indexOf("PASTE_YOUR") !== 0) {
-      fetch(APPS_SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "employeeLogout", token: tokenToRevoke })
-      }).catch(function () { /* не критично */ });
-    }
-  });
-
-  els.employeeRefreshBtn.addEventListener("click", loadPurchaseList);
-
-  // ---- Закупка ----
-  // Список "к закупке" агрегирует ещё не обработанные строки заказов по
-  // товару (сумма количества по всем клиентам). После того как закупщик
-  // сохраняет закупку по товару, строка остаётся на экране со статусом
-  // "Закуплено" (не пропадает сразу из виду), но при следующем нажатии
-  // "Обновить" уже не появится в списке "к закупке" — она уходит в
-  // "Историю закупок" ниже (данные пишутся в лист "Закупки").
-
-  function loadPurchaseList() {
-    els.employeePendingList.innerHTML = '<div class="loading-state">Загружаем…</div>';
-    fetch(APPS_SCRIPT_URL + "?action=purchaseList&token=" + encodeURIComponent(state.employee.token))
-      .then(function (r) { return r.json(); })
-      .then(function (res) {
-        if (!res || !res.ok) {
-          var message = (res && res.error) || "Не удалось загрузить список";
-          if (/сессия истекла/i.test(message)) {
-            // Сохранённый токен больше не действует на сервере (например,
-            // разлогинились с другого устройства, или прошли сутки) —
-            // возвращаем на экран логина, а не оставляем пустой экран.
-            state.employee.token = null;
-            state.employee.role = null;
-            clearEmployeeSession();
-            employeeLoginErrorShow("Сессия истекла, войдите заново");
-            showServiceScreen(els.employeeLoginScreen);
-            return;
-          }
-          els.employeePendingList.innerHTML = '<div class="empty-state">' + escapeHtml(message) + '</div>';
-          els.employeeHistoryList.innerHTML = "";
-          return;
-        }
-        state.employee.pending = res.pending || [];
-        state.employee.history = res.history || [];
-        renderPurchaseList();
-        renderPurchaseHistory();
-      })
-      .catch(function (err) {
-        console.error(err);
-        els.employeePendingList.innerHTML = '<div class="empty-state">Ошибка соединения</div>';
-      });
-  }
-
-  function renderPurchaseList() {
-    var items = state.employee.pending;
-    if (!items.length) {
-      els.employeePendingList.innerHTML = '<div class="empty-state">Пока нечего закупать — новых заказов нет</div>';
-      return;
-    }
-
-    els.employeePendingList.innerHTML = items.map(function (item, idx) {
-      var unitLabel = item.unit || "шт.";
-      return (
-        '<div class="purchase-row" data-idx="' + idx + '">' +
-          '<div class="p-name">' + escapeHtml(item.product) + (item.article ? ' <span class="p-meta">арт. ' + escapeHtml(item.article) + '</span>' : '') + '</div>' +
-          '<div class="p-meta p-ordered">Заказано: ' + item.qty + ' ' + escapeHtml(unitLabel) + '</div>' +
-          '<div class="p-inputs">' +
-            '<div class="field"><label>Куплено (' + escapeHtml(unitLabel) + ')</label><input type="number" step="0.01" min="0" inputmode="decimal" class="p-qty"></div>' +
-            '<div class="field"><label>Цена за ед.</label><input type="number" step="0.01" min="0" inputmode="decimal" class="p-price"></div>' +
-          '</div>' +
-          '<button class="p-save" data-idx="' + idx + '">Сохранить закупку</button>' +
-          '<div class="purchase-error"></div>' +
-        '</div>'
-      );
-    }).join("");
-
-    els.employeePendingList.querySelectorAll(".p-save").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var row = btn.closest(".purchase-row");
-        var idx = parseInt(btn.getAttribute("data-idx"), 10);
-        var item = state.employee.pending[idx];
-        var qtyInput = row.querySelector(".p-qty");
-        var priceInput = row.querySelector(".p-price");
-        var errEl = row.querySelector(".purchase-error");
-        errEl.style.display = "none";
-
-        var qty = parseFloat(String(qtyInput.value).replace(",", "."));
-        var price = parseFloat(String(priceInput.value).replace(",", "."));
-
-        if (!(qty > 0)) {
-          errEl.textContent = "Укажите купленное количество";
-          errEl.style.display = "block";
-          return;
-        }
-        if (!(price > 0)) {
-          errEl.textContent = "Укажите цену за единицу";
-          errEl.style.display = "block";
-          return;
-        }
-
-        btn.disabled = true;
-        btn.textContent = "Сохраняем…";
-
-        fetch(APPS_SCRIPT_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({
-            action: "submitPurchase",
-            token: state.employee.token,
-            product: item.product,
-            article: item.article,
-            unit: item.unit,
-            purchasedQty: qty,
-            unitPrice: price
-          })
-        })
-          .then(function (r) { return r.json(); })
-          .then(function (res) {
-            if (res && res.ok) {
-              row.querySelector(".p-inputs").style.display = "none";
-              btn.style.display = "none";
-              var status = document.createElement("div");
-              status.className = "purchase-status";
-              status.textContent = "✅ Закуплено: " + qty + " " + (item.unit || "шт.") + " по " + price + " за ед.";
-              row.appendChild(status);
-              if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-            } else {
-              btn.disabled = false;
-              btn.textContent = "Сохранить закупку";
-              errEl.textContent = (res && res.error) || "Не удалось сохранить";
-              errEl.style.display = "block";
-            }
-          })
-          .catch(function (err) {
-            console.error(err);
-            btn.disabled = false;
-            btn.textContent = "Сохранить закупку";
-            errEl.textContent = "Ошибка соединения";
-            errEl.style.display = "block";
-          });
-      });
-    });
-  }
-
-  function renderPurchaseHistory() {
-    var items = state.employee.history;
-    if (!items.length) {
-      els.employeeHistoryList.innerHTML = '<div class="empty-state">Закупок пока не было</div>';
-      return;
-    }
-    els.employeeHistoryList.innerHTML = items.map(function (h) {
-      var dateStr = h.date ? new Date(h.date).toLocaleString("ru-RU") : "";
-      return (
-        '<div class="history-row">' +
-          '<div class="h-name">' + escapeHtml(h.product) + (h.article ? ' (арт. ' + escapeHtml(h.article) + ')' : '') + '</div>' +
-          '<div>' + escapeHtml(dateStr) + ' — куплено ' + h.purchasedQty + ' ' + escapeHtml(h.unit || '') + ' по ' + h.unitPrice + ' за ед. (заказано ' + h.orderedQty + ')</div>' +
-        '</div>'
-      );
-    }).join("");
-  }
-
-  loadProducts();
+  init();
 })();
+
 </script>
 </body>
 </html>
